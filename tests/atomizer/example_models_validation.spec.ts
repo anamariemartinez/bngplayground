@@ -3,8 +3,11 @@ import { mkdtempSync, readFileSync, copyFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { DEFAULT_BNG2_PATH, DEFAULT_PERL_CMD } from '../../tools/bngDefaults.js';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
 import { parseBNGL } from '../../services/parseBNGL';
+
+const DEFAULT_BNG2_PATH = resolveBNG2Paths().bng2pl ?? '';
+const DEFAULT_PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
 const EXAMPLES_DIR = 'example-models';
 

@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { DEFAULT_BNG2_PATH, DEFAULT_PERL_CMD } from '../../tools/bngDefaults.js';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
+
+const bng2Paths = resolveBNG2Paths();
+const DEFAULT_BNG2_PATH = bng2Paths.bng2pl ?? '';
+const DEFAULT_PERL5LIB = bng2Paths.perl5lib ?? '';
+const DEFAULT_PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
 function runBNG2(modelPath: string, outdir: string): boolean {
   const modelName = basename(modelPath);
@@ -11,7 +16,7 @@ function runBNG2(modelPath: string, outdir: string): boolean {
     cwd: outdir,
     encoding: 'utf-8',
     timeout: 120000,
-    env: { ...process.env, PERL5LIB: '/mnt/c/Users/Achyudhan/anaconda3/envs/Research/Lib/site-packages/bionetgen/bng-win/Perl2' },
+    env: { ...process.env, PERL5LIB: process.env.PERL5LIB ?? DEFAULT_PERL5LIB },
   });
   return result.status === 0 && true;
 }
@@ -29,7 +34,7 @@ describe('BNG SBML -> BNGL converter (fallback)', () => {
       cwd: temp,
       encoding: 'utf-8',
       timeout: 120000,
-      env: { ...process.env, PERL5LIB: '/mnt/c/Users/Achyudhan/anaconda3/envs/Research/Lib/site-packages/bionetgen/bng-win/Perl2' },
+      env: { ...process.env, PERL5LIB: process.env.PERL5LIB ?? DEFAULT_PERL5LIB },
     });
 
     if (result.status !== 0) {

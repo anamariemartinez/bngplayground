@@ -18,8 +18,14 @@ import { loadEvaluator } from '@bngplayground/engine';
 import { requiresCompartmentResolution, resolveCompartmentVolumes } from '@bngplayground/engine';
 import { parseGdat } from '@bngplayground/engine';
 import { exportToSBML } from '../../services/exportSBML';
-import { DEFAULT_BNG2_PATH, DEFAULT_BNG_BIN, DEFAULT_PERL5LIB, DEFAULT_PERL_CMD } from '../../tools/bngDefaults.js';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
 import type { BNGLModel } from '../../types';
+
+const bng2Paths = resolveBNG2Paths();
+const DEFAULT_BNG2_PATH = bng2Paths.bng2pl ?? '';
+const DEFAULT_BNG_BIN = bng2Paths.bngRoot ? path.join(bng2Paths.bngRoot, 'bin') : '';
+const DEFAULT_PERL5LIB = bng2Paths.perl5lib ?? '';
+const DEFAULT_PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration

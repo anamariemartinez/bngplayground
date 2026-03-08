@@ -11,7 +11,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, copyFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename, resolve } from 'node:path';
-import { DEFAULT_BNG2_PATH, DEFAULT_PERL_CMD } from './bngDefaults.js';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
+
+const bng2Paths = resolveBNG2Paths();
+const DEFAULT_BNG2_PATH = bng2Paths.bng2pl ?? '';
+const DEFAULT_PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
 
 const MODELS = [

@@ -12,14 +12,13 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
-
-import { DEFAULT_BNG2_PATH } from '../bngDefaults.js';
+import { resolveBNG2Paths } from '../bng2-paths';
 
 const require = createRequire(import.meta.url);
 
 const SEED = 12345;
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../');
-const BNG2_PATH = process.env.BNG2_PATH ?? DEFAULT_BNG2_PATH;
+const BNG2_PATH = process.env.BNG2_PATH ?? resolveBNG2Paths().bng2pl ?? '';
 
 // Helper to parse gdat file
 function parseGdat(content: string): { headers: string[], data: number[][] } {

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { Atomizer } from '../src/lib/atomizer/index.ts';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
 
 // libsbmljs uses 'self', which is not defined in Node.js
 if (typeof self === 'undefined') {
@@ -9,9 +10,16 @@ if (typeof self === 'undefined') {
 }
 
 // Configuration
-const BNG2_PATH = 'C:/Users/Achyudhan/anaconda3/envs/Research/Lib/site-packages/bionetgen/bng-win/BNG2.pl';
+const resolvedBng2Path = resolveBNG2Paths().bng2pl;
 const OUTPUT_BASE = path.resolve('tests/parity_check');
 const TOLERANCE = 1e-3;
+
+if (!resolvedBng2Path) {
+    console.error('BNG2.pl not found.');
+    process.exit(1);
+}
+
+const BNG2_PATH = resolvedBng2Path;
 
 // Normalize path to use forward slashes (prevents quote escaping issues on Windows)
 function normalizePath(p: string): string {

@@ -4,7 +4,7 @@ import * as path from 'path';
 // Paths
 const RESOLVED_REPORT = path.resolve('reports/validation_report.md.resolved');
 const RESULTS_JSON = path.resolve('artifacts/SESSION_2026_01_05_web_output_parity/compare_results.after_refs.json');
-const ARTIFACT_PATH = 'C:/Users/Achyudhan/.gemini/antigravity/brain/a33d9450-7b3c-4c15-a02f-53f7c9eae367/validation_report.md';
+const ARTIFACT_PATH = path.resolve('reports/validation_report.md');
 
 interface ParityResult {
     model: string;

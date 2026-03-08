@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
-import { join, extname } from 'path';
+import { join, extname, resolve } from 'path';
 import { BNGLParser } from '../packages/engine/src/services/graph/core/BNGLParser';
 import { BNGXMLWriter } from '@bngplayground/engine';
+
+const NFSIM_MODELS_DIR = resolve(process.cwd(), 'src', 'wasm', 'nfsim', 'nfsim-src');
+const PUBLIC_MODELS_DIR = resolve(process.cwd(), 'public', 'models');
 
 // Recursively find all .bngl files in a directory
 function findBnglFiles(dir: string): string[] {
@@ -34,15 +37,12 @@ function findBnglFiles(dir: string): string[] {
 }
 
 describe('Multi-Compartment Support - Model Repository Validation', () => {
-    const nfsimModelsDir = 'c:\\Users\\Achyudhan\\OneDrive - University of Pittsburgh\\Desktop\\Achyudhan\\School\\PhD\\Research\\BioNetGen\\bionetgen-web-simulator\\src\\wasm\\nfsim\\nfsim-src';
-    const publicModelsDir = 'c:\\Users\\Achyudhan\\OneDrive - University of Pittsburgh\\Desktop\\Achyudhan\\School\\PhD\\Research\\BioNetGen\\bionetgen-web-simulator\\public\\models';
-
     let nfsimModels: string[] = [];
     let publicModels: string[] = [];
 
     try {
-        nfsimModels = findBnglFiles(nfsimModelsDir);
-        publicModels = findBnglFiles(publicModelsDir);
+        nfsimModels = findBnglFiles(NFSIM_MODELS_DIR);
+        publicModels = findBnglFiles(PUBLIC_MODELS_DIR);
     } catch (err) {
         console.warn('Could not scan model directories:', err);
     }

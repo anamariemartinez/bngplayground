@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { writeFileSync } from 'fs';
+import { resolve } from 'path';
+
+const OUTPUT_PATH = resolve(process.cwd(), 'test_compartment_transport_analytical.csv');
 
 describe('Compartment Transport - Generate Web Simulator CSV', () => {
     it('generates expected transport dynamics CSV', () => {
@@ -24,12 +27,11 @@ describe('Compartment Transport - Generate Web Simulator CSV', () => {
         }
 
         const csv = csvLines.join('\n');
-        const outputPath = 'c:\\Users\\Achyudhan\\OneDrive - University of Pittsburgh\\Desktop\\Achyudhan\\School\\PhD\\Research\\BioNetGen\\bionetgen-web-simulator\\test_compartment_transport_analytical.csv';
 
-        writeFileSync(outputPath, csv);
+        writeFileSync(OUTPUT_PATH, csv);
 
         console.log('Generated analytical reference CSV:');
-        console.log(`  Path: ${outputPath}`);
+        console.log(`  Path: ${OUTPUT_PATH}`);
         console.log(`  Rows: ${csvLines.length}`);
         console.log('\nSample values:');
         console.log(csvLines.slice(0, 3).join('\n'));

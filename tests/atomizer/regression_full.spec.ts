@@ -23,7 +23,7 @@ const BNG_OUTPUT_DIR = 'bng_test_output';
 const paths = resolveBNG2Paths();
 const skipIfBNG2Missing = paths.bng2pl ? it : it.skip;
 const BNG2_PATH = paths.bng2pl;
-const PERL_CMD = 'perl'; // or detect from paths if added to resolveBNG2Paths later, but resolveBNG2Paths doesn't return perl currently. In previous bngDefaults it was 'perl'
+const PERL_CMD = 'perl';
 
 function runBNG2EnsureSBML(modelPath: string, outdir: string): boolean {
   // Copy model to outdir and append writeSBML action if it's not present.
@@ -438,7 +438,7 @@ describe('Atomizer+Simulation parity (numeric comparison) — example-models', (
           // If simulation produced too few points, skip numeric comparison but record solver failure
           if (simTimes.length < 2) {
             console.warn('Simulation returned too few time points for', modelKey, '- skipping numeric comparison');
-            solverFailures.push({ model: modelKey, reason: 'insufficient_timepoints', logs: runLogs || [], timestamp: new Date().toISOString(), refGdatPath: refGdatPath || null, options });
+            solverFailures.push({ model: modelKey, reason: 'insufficient_timepoints', logs: runLogs || [], timestamp: new Date().toISOString(), refGdatPath: refGdatPath ?? undefined, options });
             return;
           }
 
@@ -456,7 +456,7 @@ describe('Atomizer+Simulation parity (numeric comparison) — example-models', (
 
           if (matchedIndices.length < 2) {
             console.warn('Insufficient overlapping time points for', modelKey, '- skipping numeric comparison');
-            solverFailures.push({ model: modelKey, reason: 'insufficient_overlap', logs: runLogs || [], timestamp: new Date().toISOString(), refGdatPath: refGdatPath || null, options });
+            solverFailures.push({ model: modelKey, reason: 'insufficient_overlap', logs: runLogs || [], timestamp: new Date().toISOString(), refGdatPath: refGdatPath ?? undefined, options });
             return;
           }
 

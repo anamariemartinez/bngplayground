@@ -6,15 +6,21 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { parseBNGL } from '../services/parseBNGL';
 import { buildContactMap } from '../services/visualization/contactMapBuilder';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const execAsync = promisify(exec);
 
-const BNG2_PATH = String.raw`C:\Users\Achyudhan\anaconda3\envs\Research\Lib\site-packages\bionetgen\bng-win\BNG2.pl`;
+const BNG2_PATH = resolveBNG2Paths().bng2pl;
 const EXAMPLES_DIR = path.resolve(__dirname, '../example-models');
 const TEMP_DIR = path.resolve(__dirname, '../temp_bng_output');
+
+if (!BNG2_PATH) {
+  console.error('BNG2.pl not found. Install bionetgen or set BNG2_PATH.');
+  process.exit(1);
+}
 
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR);

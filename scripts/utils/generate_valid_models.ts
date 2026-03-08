@@ -41,7 +41,7 @@ function main() {
         try {
             // Run BNG2.pl --check
             execSync(`perl "${BNG2_PATH}" --check "${file}"`, { stdio: 'ignore' });
-            validModels.push(file);
+            validModels.push(path.relative(process.cwd(), file).split(path.sep).join('/'));
             process.stdout.write('.');
         } catch (e) {
             failedModels.push(file);

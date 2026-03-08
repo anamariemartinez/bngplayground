@@ -56,8 +56,10 @@ describe('RepoIntegration', () => {
             console.log(`[RepoIntegration] Loading validated models from ${VALID_MODELS_PATH}`);
             const content = fs.readFileSync(VALID_MODELS_PATH, 'utf-8');
             const allFiles: string[] = JSON.parse(content);
-            // Apply filter even to loaded files to ensure exclusions are respected
-            files = allFiles.filter(f => !shouldExclude(f));
+            // Resolve relative paths from project root while remaining backward-compatible with absolute paths.
+            files = allFiles
+                .map(f => path.isAbsolute(f) ? f : path.resolve(process.cwd(), f))
+                .filter(f => fs.existsSync(f) && !shouldExclude(f));
             console.log(`[RepoIntegration] Filtered to ${files.length} models (from ${allFiles.length} in JSON)`);
         } else {
             console.warn(`[RepoIntegration] Valid models list not found. Falling back to recursive scan of ${REPO_ROOT}`);

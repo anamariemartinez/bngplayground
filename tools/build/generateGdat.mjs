@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync, copyFileSync, mkdirSync, existsSync, readdirSync, statSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { DEFAULT_BNG2_PATH, DEFAULT_PERL_CMD } from './bngDefaults.js';
+import { resolveBNG2Paths } from '../bng2-paths.js';
+
+const bng2Paths = resolveBNG2Paths();
+const DEFAULT_BNG2_PATH = bng2Paths.bng2pl ?? '';
+const DEFAULT_PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, '..');

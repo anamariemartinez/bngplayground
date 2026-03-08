@@ -8,6 +8,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import * as os from 'os';
+import { resolveBNG2Paths } from '../bng2-paths';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +16,14 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const MODELS_DIR = path.join(PROJECT_ROOT, 'public', 'models');
 const BNG_OUTPUT_DIR = path.join(PROJECT_ROOT, 'bng_test_output');
-const BNG2_PL = 'C:\\Users\\Achyudhan\\anaconda3\\envs\\Research\\Lib\\site-packages\\bionetgen\\bng-win\\BNG2.pl';
+const resolvedBng2Path = resolveBNG2Paths().bng2pl;
+
+if (!resolvedBng2Path) {
+  console.error('BNG2.pl not found.');
+  process.exit(1);
+}
+
+const BNG2_PL = resolvedBng2Path;
 
 // Use temp directory without spaces to avoid BNG2.pl path issues
 const TEMP_DIR = path.join(os.tmpdir(), 'bng_temp_' + Date.now());

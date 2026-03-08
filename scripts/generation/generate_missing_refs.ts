@@ -2,9 +2,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { resolveBNG2Paths } from '../../tools/bng2-paths';
 
-const REPORT_PATH = 'C:/Users/Achyudhan/.gemini/antigravity/brain/a33d9450-7b3c-4c15-a02f-53f7c9eae367/validation_report.md';
-const BNG2_PATH = process.env.BNG2_PATH || 'C:\\Users\\Achyudhan\\anaconda3\\envs\\Research\\Lib\\site-packages\\bionetgen\\bng-win\\BNG2.pl';
+const REPORT_PATH = path.resolve('reports/validation_report.md');
+const BNG2_PATH = process.env.BNG2_PATH || resolveBNG2Paths().bng2pl;
 const PERL_CMD = process.env.PERL_CMD || 'perl';
 const REPO_DIRS = [
     path.resolve('public/models')
@@ -12,7 +13,7 @@ const REPO_DIRS = [
 
 const EXCLUDE_MODELS = ['Kozer_2014'];
 
-if (!fs.existsSync(BNG2_PATH)) {
+if (!BNG2_PATH || !fs.existsSync(BNG2_PATH)) {
     console.error(`BNG2 not found at ${BNG2_PATH}`);
     process.exit(1);
 }

@@ -3,8 +3,10 @@ import { readFileSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { BNGLParser } from '../packages/engine/src/services/graph/core/BNGLParser';
 import { BNGXMLWriter } from '@bngplayground/engine';
+import { resolveBNG2Paths } from '../tools/bng2-paths';
 
-import { DEFAULT_BNG2_PATH, DEFAULT_PERL_CMD } from '../tools/bngDefaults.js';
+const DEFAULT_BNG2_PATH = resolveBNG2Paths().bng2pl ?? '';
+const DEFAULT_PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
 /**
  * Parity tests for polymer models with compartments
