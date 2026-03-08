@@ -98,6 +98,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install BioNetGen (native binaries for parity tests)
+        run: |
+          pip install bionetgen
+          BNG_ROOT=$(python -c "import bionetgen; import os; print(os.path.join(os.path.dirname(bionetgen.__file__), 'bng-linux'))")
+          if [ ! -d "$BNG_ROOT" ]; then
+            echo "bng-linux not found, falling back to parent directory"
+            BNG_ROOT=$(python -c "import bionetgen; import os; print(os.path.dirname(bionetgen.__file__))")
+          fi
+          echo "BNG2_PATH=${BNG_ROOT}/BNG2.pl" >> $GITHUB_ENV
+          echo "BNGPATH=${BNG_ROOT}" >> $GITHUB_ENV
+          echo "NFSIM_PATH=${BNG_ROOT}/bin/NFsim" >> $GITHUB_ENV
+          # Verify binaries exist (don't fail here, tests will skip if not found)
+          ls -la "${BNG_ROOT}/BNG2.pl" || true
+          ls -la "${BNG_ROOT}/bin/NFsim" || true
       
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -112,6 +132,9 @@ jobs:
         run: npx vitest run --config vitest.full.config.ts --shard=${{ matrix.shard }}/3
         env:
           NODE_ENV: test
+          BNG2_PATH: ${{ env.BNG2_PATH }}
+          BNGPATH: ${{ env.BNGPATH }}
+          NFSIM_PATH: ${{ env.NFSIM_PATH }}
         continue-on-error: true
       
       - name: Upload coverage (if generated)

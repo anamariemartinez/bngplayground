@@ -1,13 +1,3 @@
-// @ts-nocheck
-/**
- * GDAT Comparison Tests: Web Simulator vs BNG2.pl
- * 
- * This test suite:
- * 1. Runs the BNG2.pl simulator to generate reference GDAT output
- * 2. Runs the web simulator with the same model
- * 3. Compares the results
- */
-
 import { describe, it, expect } from 'vitest';
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname, basename } from 'node:path';
@@ -20,20 +10,31 @@ import { BNGLParser } from '../packages/engine/src/services/graph/core/BNGLParse
 import { NetworkGenerator, GeneratorProgress } from '../packages/engine/src/services/graph/NetworkGenerator';
 import { GraphCanonicalizer } from '../packages/engine/src/services/graph/core/Canonical';
 import type { BNGLModel } from '../types';
+import { hasBNG2, resolveBNG2Paths } from '../tools/bng2-paths';
+
+const paths = resolveBNG2Paths();
 
 // Import BNG2 path defaults
-import { DEFAULT_BNG2_PATH, DEFAULT_PERL_CMD } from '../tools/bngDefaults.js';
 import { BNG2_PARSE_AND_ODE_VERIFIED_MODELS } from '../constants';
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(thisDir, '..');
 
-const BNG2_PATH = process.env.BNG2_PATH ?? DEFAULT_BNG2_PATH;
-const PERL_CMD = process.env.PERL_CMD ?? DEFAULT_PERL_CMD;
+const BNG2_PATH = paths.bng2pl || process.env.BNG2_PATH;
+const PERL_CMD = process.env.PERL_CMD ?? 'perl';
 
-const bngAvailable = existsSync(BNG2_PATH);
+const bngAvailable = hasBNG2();
 
-// Tolerance settings
+/**
+ * GDAT Comparison Tests: Web Simulator vs BNG2.pl
+ * 
+ * This test suite:
+ * 1. Runs the BNG2.pl simulator to generate reference GDAT output
+ * 2. Runs the web simulator with the same model
+ * 3. Compares the results
+ */
+describe.skipIf(!hasBNG2())('BNG2 Comparison Tests', () => {
+
 // Tolerance settings
 // (Overridden below for strict alignment)
 

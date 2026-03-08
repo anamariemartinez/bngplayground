@@ -20,6 +20,22 @@
 - Debug/repro specs (`tests/debug-*.ts`, `tests/*isolated*.ts`, `tests/*repro*.ts`, `tests/*spawnsync*.ts`) are **excluded** from the default run; invoke explicitly with `npx vitest run <file>`
 - Additional test files in `src/*.test.ts` exist but are not in Vitest config; run manually with `npx vitest run`
 
+### Native BioNetGen for Parity Tests
+
+Some tests compare web simulator output against BioNetGen (BNG2.pl) and NFsim native binaries.
+These require BioNetGen to be installed:
+
+```bash
+pip install bionetgen   # Installs BNG2.pl, NFsim, run_network for current platform
+```
+
+Binary paths are auto-detected from PyBioNetGen. Override with environment variables:
+- `BNG2_PATH` — path to BNG2.pl
+- `NFSIM_PATH` — path to NFsim binary
+- `BNGPATH` — BNG root directory (contains BNG2.pl, Perl2/, bin/)
+
+Tests that require native binaries are automatically skipped when binaries are not found.
+
 ### Utilities
 
 - `npm run generate:gdat` - Regenerate GDAT reference fixtures

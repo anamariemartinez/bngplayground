@@ -4,20 +4,23 @@ import { parseBNGLStrict } from '../packages/engine/src/parser/BNGLParserWrapper
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import * as path from 'path';
+import { hasNFsim, resolveBNG2Paths } from '../tools/bng2-paths';
+
+const paths = resolveBNG2Paths();
 
 /**
  * Parity test for polymer.bngl - a compartmental model.
  * 
  * This test:
  * 1. Generates BNGXML from the model
- * 2. Runs NFsim.exe
+ * 2. Runs NFsim binary
  * 3. Optionally generates BNG2 reference via BNG2.pl
  * 4. Validates NFsim produces reasonable output
  */
-describe('Polymer Model Parity', () => {
+describe.skipIf(!hasNFsim())('Polymer Model Parity', () => {
     const testDir = 'temp_parity_polymer';
-    const nfsimPath = 'bionetgen_python/bng-win/bin/NFsim.exe';
-    const bng2plPath = 'C:\\Users\\Achyudhan\\anaconda3\\envs\\Research\\Lib\\site-packages\\bionetgen\\bng-win\\BNG2.pl';
+    const nfsimPath = paths.nfsim!;
+    const bng2plPath = paths.bng2pl;
     const modelPath = 'public/models/polymer.bngl';
 
     beforeAll(() => {

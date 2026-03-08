@@ -4,6 +4,9 @@ import { parseBNGLStrict } from '../packages/engine/src/parser/BNGLParserWrapper
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import * as path from 'path';
+import { hasNFsim, resolveBNG2Paths } from '../tools/bng2-paths';
+
+const paths = resolveBNG2Paths();
 
 /**
  * Parity test for NFsim compartment support.
@@ -15,9 +18,9 @@ import * as path from 'path';
  * The test uses a simple A + B -> C reaction in a compartment with volume V=2.
  * The expected effective rate should be k/V = 0.5 (half of the base rate).
  */
-describe('NFsim Compartment Parity', () => {
+describe.skipIf(!hasNFsim())('NFsim Compartment Parity', () => {
     const testDir = 'temp_parity_compartment';
-    const nfsimPath = 'bionetgen_python/bng-win/bin/NFsim.exe';
+    const nfsimPath = paths.nfsim!;
 
     // Simple compartmental model: A + B -> C in volume V=2
     const compartmentBngl = `

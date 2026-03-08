@@ -18,6 +18,9 @@ import { BNGLParser } from '@bngplayground/engine';
 import { NautyService } from '@bngplayground/engine';
 import { createSolver } from '@bngplayground/engine';
 import { execSync } from 'child_process';
+import { resolveBNG2Paths } from '../bng2-paths';
+
+const paths = resolveBNG2Paths();
 
 // Polyfill require and __dirname for CVODE WASM module compatibility
 const require = createRequire(import.meta.url);
@@ -38,7 +41,11 @@ if (typeof globalThis.__dirname === 'undefined') {
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 // BNG2.pl path
-const BNG2_PATH = 'C:\\Users\\Achyudhan\\anaconda3\\envs\\Research\\Lib\\site-packages\\bionetgen\\bng-win\\BNG2.pl';
+const BNG2_PATH = paths.bng2pl;
+if (!BNG2_PATH) {
+  console.error('BNG2.pl path not found. Please set BNG2_PATH or install bionetgen.');
+  process.exit(1);
+}
 const BNG2_DIR = path.dirname(BNG2_PATH);
 
 // Timeout for ODE simulation (60 seconds)
