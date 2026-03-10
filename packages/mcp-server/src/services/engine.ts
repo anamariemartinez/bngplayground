@@ -1,0 +1,524 @@
+import {
+    BNGLModel,
+    BNGLMoleculeType,
+    ReactionRule,
+    BNGLParser,
+    parseBNGLWithANTLR,
+    generateExpandedNetwork,
+    clearAllEvaluatorCaches,
+    evaluateFunctionalRate,
+    validateModelForNFsim,
+    MassBalance,
+} from '@bngplayground/engine';
+import { z } from 'zod';
+import {
+    ToolArgs,
+    ToolResult,
+    ContactMap,
+    ContactNode,
+    ContactEdge,
+    ValidateModelResult,
+    ValidationMessage,
+    ParsedSpeciesGraph,
+} from '../types/index.js';
+
+export function createToolResult<T>(data: T): ToolResult<T> {
+    return {
+        content: [
+            {
+                type: 'text',
+                text: JSON.stringify(data, null, 2),
+            },
+        ],
+        structuredContent: data,
+    };
+}
+
+export function formatZodError(toolName: string, args: ToolArgs, error: z.ZodError): Error {
+    const issues = error.issues.map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : 'arguments';
+        return `${path}: ${issue.message}`;
+    }).join('; ');
+    const received = args === undefined ? 'undefined' : JSON.stringify(args);
+    return new Error(`Invalid arguments for ${toolName}: ${issues}. Received: ${received}`);
+}
+
+export function parseArgs<T>(toolName: string, schema: z.ZodType<T>, args: ToolArgs): T {
+    const parsed = schema.safeParse(args ?? {});
+    if (!parsed.success) {
+        throw formatZodError(toolName, args, parsed.error);
+    }
+    return parsed.data;
+}
+
+export function parseModelOrThrow(code: string): BNGLModel {
+    const result = parseBNGLWithANTLR(code);
+    if (!result.success || !result.model) {
+        const message = result.errors.length > 0
+            ? result.errors.map((error: any) => `line ${error.line}:${error.column} ${error.message}`).join('; ')
+            : 'Unknown BNGL parse failure';
+        throw new Error(`BNGL parse failed: ${message}`);
+    }
+    return result.model;
+}
+
+export function buildSimulationOptions(args: any) {
+    const simulationOptions: any = {
+        method: args.method ?? 'ode',
+        t_end: args.t_end ?? 10,
+        n_steps: args.n_steps ?? 100,
+        ...(args.solver !== undefined ? { solver: args.solver } : {}),
+        ...(args.atol !== undefined ? { atol: args.atol } : {}),
+        ...(args.rtol !== undefined ? { rtol: args.rtol } : {}),
+        ...(args.max_steps !== undefined ? { maxSteps: args.max_steps } : {}),
+        ...(args.seed !== undefined ? { seed: args.seed } : {}),
+        ...(args.sparse !== undefined ? { sparse: args.sparse } : {}),
+    };
+
+    if (simulationOptions.method === 'ode' && simulationOptions.solver === undefined) {
+        simulationOptions.solver = 'auto';
+    }
+
+    return simulationOptions;
+}
+
+export function applyNetworkOptions<T extends { max_agents?: number; max_reactions?: number; max_iterations?: number; max_agg?: number }>(
+    model: BNGLModel,
+    args: T,
+): BNGLModel {
+    const hasOverrides = args.max_agents !== undefined
+        || args.max_reactions !== undefined
+        || args.max_iterations !== undefined
+        || args.max_agg !== undefined;
+
+    if (!hasOverrides) {
+        return model;
+    }
+
+    return {
+        ...model,
+        networkOptions: {
+            ...(model.networkOptions ?? {}),
+            ...(args.max_agents !== undefined ? { maxSpecies: args.max_agents } : {}),
+            ...(args.max_reactions !== undefined ? { maxReactions: args.max_reactions } : {}),
+            ...(args.max_iterations !== undefined ? { maxIter: args.max_iterations } : {}),
+            ...(args.max_agg !== undefined ? { maxAgg: args.max_agg } : {}),
+        },
+    };
+}
+
+export async function expandModel(model: BNGLModel): Promise<BNGLModel> {
+    return generateExpandedNetwork(
+        model,
+        () => { },
+        () => { },
+    );
+}
+
+export function extractMoleculeNames(pattern: string): string[] {
+    if (!pattern) {
+        return [];
+    }
+
+    return pattern
+        .split('.')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
+        .map((segment) => {
+            const match = segment.match(/^([A-Za-z0-9_]+)/);
+            return match ? match[1] : segment;
+        });
+}
+
+export function buildInitialMoleculeSet(model: BNGLModel): Set<string> {
+    const molecules = new Set<string>();
+
+    model.species.forEach((species) => {
+        extractMoleculeNames(species.name).forEach((name) => molecules.add(name));
+    });
+
+    return molecules;
+}
+
+export function findUnreachableRules(model: BNGLModel): string[] {
+    const knownMolecules = buildInitialMoleculeSet(model);
+    const reachable = new Set<string>();
+    const reactionRules = model.reactionRules ?? [];
+
+    const ruleDescriptors = reactionRules.map((rule, index) => {
+        const reactants = rule.reactants.flatMap(extractMoleculeNames);
+        const products = rule.products.flatMap(extractMoleculeNames);
+        const label = rule.name ?? `Rule ${index + 1}`;
+        const id = rule.name ?? `rule_${index + 1}`;
+        return { id, label, reactants, products };
+    });
+
+    let progress = true;
+    while (progress) {
+        progress = false;
+        ruleDescriptors.forEach((descriptor) => {
+            if (reachable.has(descriptor.id)) {
+                return;
+            }
+            if (descriptor.reactants.length === 0 || descriptor.reactants.every((name) => knownMolecules.has(name))) {
+                descriptor.products.forEach((name) => knownMolecules.add(name));
+                reachable.add(descriptor.id);
+                progress = true;
+            }
+        });
+    }
+
+    return ruleDescriptors
+        .filter((descriptor) => !reachable.has(descriptor.id))
+        .map((descriptor) => descriptor.label);
+}
+
+export function validateModel(model: BNGLModel, includeNFsim: boolean): ValidateModelResult {
+    const errors: ValidationMessage[] = [];
+    const warnings: ValidationMessage[] = [];
+    const info: ValidationMessage[] = [];
+
+    if (model.observables.length === 0) {
+        errors.push({
+            source: 'model',
+            code: 'MISSING_OBSERVABLES',
+            severity: 'error',
+            message: 'No observables defined. Add at least one observable to inspect simulation output.',
+            relatedElement: 'observables',
+        });
+    }
+
+    Object.entries(model.parameters).forEach(([name, value]) => {
+        if (!Number.isFinite(value)) {
+            errors.push({
+                source: 'model',
+                code: 'NON_FINITE_PARAMETER',
+                severity: 'error',
+                message: `Parameter ${name} is not a finite number.`,
+                relatedElement: name,
+            });
+            return;
+        }
+
+        if (Math.abs(value) >= 1e6 || (Math.abs(value) > 0 && Math.abs(value) <= 1e-6)) {
+            warnings.push({
+                source: 'model',
+                code: 'UNUSUAL_PARAMETER_MAGNITUDE',
+                severity: 'warning',
+                message: `Parameter ${name} has an unusual magnitude (${value}).`,
+                relatedElement: name,
+            });
+        }
+    });
+
+    const unreachableRules = findUnreachableRules(model);
+    if (unreachableRules.length > 0) {
+        warnings.push({
+            source: 'model',
+            code: 'UNREACHABLE_RULES',
+            severity: 'warning',
+            message: `${unreachableRules.length} rule(s) may never trigger because their reactants are not reachable from seed species.`,
+            relatedElement: unreachableRules.join(', '),
+        });
+    }
+
+    model.observables.forEach((observable) => {
+        const patternIssue = BNGLParser.validatePattern(observable.pattern);
+        if (patternIssue) {
+            errors.push({
+                source: 'observable',
+                code: 'INVALID_OBSERVABLE_PATTERN',
+                severity: 'error',
+                message: `Observable ${observable.name} has an invalid pattern: ${patternIssue}`,
+                relatedElement: observable.name,
+            });
+        }
+    });
+
+    const nfsim = includeNFsim ? validateModelForNFsim(model) : null;
+    if (nfsim) {
+        nfsim.errors.forEach((issue: any) => {
+            errors.push({
+                source: 'nfsim',
+                code: issue.type,
+                severity: issue.severity ?? 'error',
+                message: issue.message,
+            });
+        });
+        nfsim.warnings.forEach((issue: any) => {
+            warnings.push({
+                source: 'nfsim',
+                code: issue.type,
+                severity: issue.severity ?? 'warning',
+                message: issue.message,
+            });
+        });
+        nfsim.recommendations.forEach((recommendation: any) => {
+            info.push({
+                source: 'nfsim',
+                code: recommendation.type,
+                severity: 'info',
+                message: recommendation.message,
+            });
+        });
+    }
+
+    const massBalanceIssues = MassBalance.checkMassBalance(model);
+    massBalanceIssues.forEach((issue: { ruleName: string; issue: string; severity: 'error' | 'warning' }) => {
+        warnings.push({
+            source: 'model',
+            code: 'MASS_BALANCE_IMBALANCE',
+            severity: issue.severity,
+            message: `Rule "${issue.ruleName}": ${issue.issue}`,
+        });
+    });
+
+    return {
+        valid: errors.length === 0,
+        parseSuccess: true,
+        parseErrors: [],
+        errors,
+        warnings,
+        info,
+        summary: {
+            errors: errors.length,
+            warnings: warnings.length,
+            info: info.length,
+        },
+        nfsim: nfsim as any,
+    };
+}
+
+export function splitByTopLevelCommas(pattern: string): string[] {
+    const parts: string[] = [];
+    let current = '';
+    let depth = 0;
+    for (const ch of pattern) {
+        if (ch === '(') {
+            depth += 1;
+        } else if (ch === ')') {
+            depth = Math.max(0, depth - 1);
+        }
+        if (ch === ',' && depth === 0) {
+            const trimmed = current.trim();
+            if (trimmed) {
+                parts.push(trimmed);
+            }
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    const trimmed = current.trim();
+    if (trimmed) {
+        parts.push(trimmed);
+    }
+    return parts;
+}
+
+export function parseSpeciesGraphs(patterns: string[]): ParsedSpeciesGraph[] {
+    const graphs: ParsedSpeciesGraph[] = [];
+    for (const pattern of patterns) {
+        const pieces = splitByTopLevelCommas(String(pattern));
+        for (const piece of pieces) {
+            graphs.push(BNGLParser.parseSpeciesGraph(piece, true));
+        }
+    }
+    return graphs;
+}
+
+export function extractBonds(graphs: ParsedSpeciesGraph[]): Map<string, { mol1: string; mol2: string; comp1: string; comp2: string }> {
+    const bonds = new Map<string, { mol1: string; mol2: string; comp1: string; comp2: string }>();
+    const sanitize = (name: string) => name.split('.')[0];
+
+    graphs.forEach((graph) => {
+        graph.molecules.forEach((molecule, molIdx) => {
+            const molName = sanitize(molecule.name);
+            molecule.components.forEach((component, compIdx) => {
+                const partnerKeys = graph.adjacency.get(`${molIdx}.${compIdx}`);
+                if (!partnerKeys || partnerKeys.length === 0) {
+                    return;
+                }
+                for (const partnerKey of partnerKeys) {
+                    const [partnerMolIdxStr, partnerCompIdxStr] = partnerKey.split('.');
+                    const partnerMolIdx = Number.parseInt(partnerMolIdxStr, 10);
+                    const partnerCompIdx = Number.parseInt(partnerCompIdxStr, 10);
+                    if (Number.isNaN(partnerMolIdx) || Number.isNaN(partnerCompIdx)) {
+                        continue;
+                    }
+                    if (partnerMolIdx < molIdx || (partnerMolIdx === molIdx && partnerCompIdx < compIdx)) {
+                        continue;
+                    }
+                    const partnerMolecule = graph.molecules[partnerMolIdx];
+                    const partnerComponent = partnerMolecule?.components[partnerCompIdx];
+                    if (!partnerMolecule || !partnerComponent) {
+                        continue;
+                    }
+                    const partnerName = sanitize(partnerMolecule.name);
+                    const endpoints = [`${molName}:${component.name}`, `${partnerName}:${partnerComponent.name}`].sort();
+                    const key = endpoints.join('|');
+                    bonds.set(key, {
+                        mol1: molName,
+                        mol2: partnerName,
+                        comp1: component.name,
+                        comp2: partnerComponent.name,
+                    });
+                }
+            });
+        });
+    });
+
+    return bonds;
+}
+
+export function buildContactMap(rules: ReactionRule[], moleculeTypes: BNGLMoleculeType[] = []): ContactMap {
+    const moleculeMap = new Map<string, Set<string>>();
+    const componentStateMap = new Map<string, Set<string>>();
+    const edgeMap = new Map<string, ContactEdge>();
+
+    moleculeTypes.forEach((moleculeType) => {
+        if (!moleculeMap.has(moleculeType.name)) {
+            moleculeMap.set(moleculeType.name, new Set());
+        }
+        moleculeType.components.forEach((componentDefinition) => {
+            const parts = componentDefinition.split('~');
+            const componentName = parts[0];
+            moleculeMap.get(moleculeType.name)?.add(componentName);
+            if (parts.length > 1) {
+                const stateKey = `${moleculeType.name}_${componentName}`;
+                if (!componentStateMap.has(stateKey)) {
+                    componentStateMap.set(stateKey, new Set());
+                }
+                parts.slice(1).forEach((state) => componentStateMap.get(stateKey)?.add(state));
+            }
+        });
+    });
+
+    rules.forEach((rule, index) => {
+        const ruleId = rule.name ?? `rule_${index + 1}`;
+        const ruleLabel = rule.name ?? `Rule ${index + 1}`;
+        const reactantGraphs = parseSpeciesGraphs(rule.reactants);
+        const productGraphs = parseSpeciesGraphs(rule.products);
+        [...reactantGraphs, ...productGraphs].forEach((graph) => {
+            graph.molecules.forEach((molecule) => {
+                if (molecule.name === '0') {
+                    return;
+                }
+                const moleculeName = molecule.name.split('.')[0];
+                if (!moleculeMap.has(moleculeName)) {
+                    moleculeMap.set(moleculeName, new Set());
+                }
+                molecule.components.forEach((component) => {
+                    moleculeMap.get(moleculeName)?.add(component.name);
+                    if (component.state && component.state !== '?') {
+                        const stateKey = `${moleculeName}_${component.name}`;
+                        if (!componentStateMap.has(stateKey)) {
+                            componentStateMap.set(stateKey, new Set());
+                        }
+                        componentStateMap.get(stateKey)?.add(component.state);
+                    }
+                });
+            });
+        });
+
+        const bonds = new Map<string, { mol1: string; mol2: string; comp1: string; comp2: string }>();
+        extractBonds(reactantGraphs).forEach((value, key) => bonds.set(key, value));
+        extractBonds(productGraphs).forEach((value, key) => bonds.set(key, value));
+
+        bonds.forEach((bond) => {
+            const source = `${bond.mol1}_${bond.comp1}`;
+            const target = `${bond.mol2}_${bond.comp2}`;
+            const edgeKey = `${source}->${target}`;
+            if (!edgeMap.has(edgeKey)) {
+                edgeMap.set(edgeKey, {
+                    from: source,
+                    to: target,
+                    interactionType: 'binding',
+                    componentPair: [bond.comp1, bond.comp2],
+                    ruleIds: [],
+                    ruleLabels: [],
+                });
+            }
+            const edge = edgeMap.get(edgeKey);
+            if (edge && !edge.ruleIds.includes(ruleId)) {
+                edge.ruleIds.push(ruleId);
+                edge.ruleLabels.push(ruleLabel);
+            }
+        });
+    });
+
+    const nodes: ContactNode[] = [];
+    const sortedMolecules = Array.from(moleculeMap.keys()).sort();
+    const idMap = new Map<string, string>();
+
+    sortedMolecules.forEach((moleculeName, moleculeIndex) => {
+        const moleculeId = `${moleculeIndex}`;
+        const components = Array.from(moleculeMap.get(moleculeName) ?? []).sort();
+        idMap.set(moleculeName, moleculeId);
+        nodes.push({
+            id: moleculeId,
+            label: moleculeName,
+            type: 'molecule',
+            isGroup: components.length > 0,
+        });
+        components.forEach((componentName, componentIndex) => {
+            const componentId = `${moleculeIndex}.${componentIndex}`;
+            idMap.set(`${moleculeName}_${componentName}`, componentId);
+            const stateKey = `${moleculeName}_${componentName}`;
+            const states = Array.from(componentStateMap.get(stateKey) ?? []).sort();
+            nodes.push({
+                id: componentId,
+                label: componentName,
+                type: 'component',
+                parent: moleculeId,
+                isGroup: states.length > 0,
+            });
+            states.forEach((stateName, stateIndex) => {
+                nodes.push({
+                    id: `${moleculeIndex}.${componentIndex}.${stateIndex}`,
+                    label: stateName,
+                    type: 'state',
+                    parent: componentId,
+                });
+            });
+        });
+    });
+
+    const validNodeIds = new Set(nodes.map((node) => node.id));
+    const edges = Array.from(edgeMap.values())
+        .map((edge) => ({
+            ...edge,
+            from: idMap.get(edge.from) ?? edge.from,
+            to: idMap.get(edge.to) ?? edge.to,
+        }))
+        .filter((edge) => validNodeIds.has(edge.from) && validNodeIds.has(edge.to));
+
+    return { nodes, edges };
+}
+
+export function assertScannableParameter(model: BNGLModel, parameter: string): void {
+    if (!(parameter in model.parameters)) {
+        throw new Error(`Unknown parameter for parameter_scan: ${parameter}`);
+    }
+}
+
+export function updateMassActionRates(model: BNGLModel): void {
+    const context = model.parameters ?? {};
+    for (const reaction of model.reactions ?? []) {
+        if (!reaction.isFunctionalRate && reaction.rate && typeof reaction.rate === 'string') {
+            try {
+                const updatedRate = evaluateFunctionalRate(reaction.rate, context, {}, model.functions);
+                if (Number.isFinite(updatedRate)) {
+                    reaction.rateConstant = updatedRate;
+                }
+            } catch {
+                // Keep the existing concrete rate when a symbolic update fails.
+            }
+        }
+    }
+    clearAllEvaluatorCaches();
+}
+
+export function cloneExpandedModel(model: BNGLModel): BNGLModel {
+    return structuredClone(model);
+}

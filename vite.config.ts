@@ -56,8 +56,7 @@ export default defineConfig(() => {
         'antlr4ts/Token',
         'jsep'
       ],
-      exclude: ['@bngplayground/engine', '@xenova/transformers'],
-      force: true
+      exclude: ['@bngplayground/engine', '@xenova/transformers']
     },
     resolve: {
       alias: {

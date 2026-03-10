@@ -28,14 +28,15 @@ const LAYOUT_CONFIGS: Record<LayoutType, any> = {
   hierarchical: {
     name: 'dagre',
     rankDir: 'TB',
-    nodeSep: 80,
-    rankSep: 120,
+    nodeSep: 50,
+    rankSep: 80,
     edgeSep: 20,
     animate: true,
     animationDuration: 400,
     padding: 50,
     fit: true,
-    spacingFactor: 1.5,
+    spacingFactor: 1.0,
+    nodeDimensionsIncludeLabels: true,
   },
   cose: {
     name: 'cose',
@@ -57,22 +58,31 @@ const LAYOUT_CONFIGS: Record<LayoutType, any> = {
     quality: 'proof',
     randomize: false,
     animate: true,
-    animationDuration: 1000,
+    animationDuration: 800,
     fit: true,
     padding: 30,
+    // Compound-node aware sizing
     nodeDimensionsIncludeLabels: true,
     uniformNodeDimensions: false,
+    // packComponents tiles disconnected subgraphs (e.g. Bid, Mito, etc.)
+    // instead of letting them float to random positions
     packComponents: true,
     step: 'all',
-    nodeRepulsion: 4500,
-    idealEdgeLength: 50,
+    // Force parameters tuned for BNGL contact maps:
+    // Higher repulsion pushes molecules apart so edges don't cross parents
+    nodeRepulsion: 8000,
+    // Longer ideal edge length gives compound nodes room to breathe
+    idealEdgeLength: 80,
     edgeElasticity: 0.45,
+    // Low nesting factor keeps children compact inside their parent
     nestingFactor: 0.1,
     gravity: 0.25,
+    gravityRange: 3.8,
     numIter: 2500,
+    // Tiling controls how disconnected components are arranged
     tile: true,
-    tilingPaddingVertical: 10,
-    tilingPaddingHorizontal: 10,
+    tilingPaddingVertical: 20,
+    tilingPaddingHorizontal: 20,
   },
   grid: {
     name: 'grid',
@@ -134,12 +144,269 @@ const LAYOUT_CONFIGS: Record<LayoutType, any> = {
   },
 };
 
-const BASE_LAYOUT = LAYOUT_CONFIGS.hierarchical;
+// fcose is the default: it is compound-node-aware, handles disconnected
+// components via tiling, and avoids the vertical-stacking artefact that
+// dagre produces for multi-child molecules like EGFRvIII.
+const BASE_LAYOUT = LAYOUT_CONFIGS.fcose;
+
+// Styles are pulled out so they can be asserted in unit tests.  The
+// renderer passes `isDark` based on the document state, while tests can
+// supply whichever value is convenient.
+export function getContactMapStyles(isDark: boolean): any[] {
+  const edgeColor = isDark ? '#94a3b8' : '#000000';
+  const textColor = isDark ? '#ffffff' : '#000000';
+
+  return [
+    // ── Base node style ──────────────────────────────────────────────
+    {
+      selector: 'node',
+      style: {
+        'text-halign': 'center',
+        'text-valign': 'center',
+        'font-size': 14,
+        'text-wrap': 'none',
+        'text-max-width': '10000px',
+        color: textColor,
+        'z-index': 10,
+        'z-index-compare': 'manual',
+        'text-justification': 'center',
+        label: 'data(label)',
+      },
+    },
+
+    // ── Molecule (base — applies to both parent and childless) ───────
+    {
+      selector: 'node[type = "molecule"]',
+      style: {
+        'background-color': '#D2D2D2',
+        'border-color': '#000000',
+        'border-width': 1,
+        'font-weight': 700,
+        shape: 'round-rectangle',
+        'z-index': 5,
+        'z-index-compare': 'manual',
+        'text-valign': 'top',
+        'text-halign': 'center',
+      },
+    },
+    // Molecule with children (e.g. XIAP with b1, b2)
+    {
+      selector: 'node[type = "molecule"]:parent',
+      style: {
+        'text-valign': 'top',
+        'text-margin-y': 18,
+        padding: '30px',
+        'min-width': 60,
+        'compound-sizing-wrt-labels': 'exclude',
+        'text-wrap': 'none',
+        'text-max-width': '10000px',
+      },
+    },
+    // Molecule without children (e.g. DeathLigand, Internalized_Rec)
+    {
+      selector: 'node[type = "molecule"]:childless',
+      style: {
+        width: 'label',
+        height: 'label',
+        padding: '10px',
+        'text-valign': 'center',
+        'text-margin-y': 0,
+        'min-width': 60,
+        'text-wrap': 'none',
+        'text-max-width': '10000px',
+      },
+    },
+
+    // ── Compartment ──────────────────────────────────────────────────
+    {
+      selector: 'node[type = "compartment"]',
+      style: {
+        'background-color': isDark ? '#1e1b4b' : '#eef2ff',
+        'border-color': '#6366f1',
+        'border-width': 2,
+        'border-style': 'dashed',
+        'font-size': 16,
+        'font-weight': 700,
+        padding: '20px',
+      },
+    },
+
+    // ── Component (base) ─────────────────────────────────────────────
+    {
+      selector: 'node[type = "component"]',
+      style: {
+        'background-color': '#FFFFFF',
+        'border-color': '#000000',
+        'border-width': 1,
+        shape: 'round-rectangle',
+        'z-index': 20,
+        'z-index-compare': 'manual',
+      },
+    },
+    // Component with state children (e.g. s with U, P)
+    {
+      selector: 'node[type = "component"]:parent',
+      style: {
+        'text-valign': 'top',
+        'text-margin-y': 14,
+        padding: '14px',
+        'compound-sizing-wrt-labels': 'exclude',
+      },
+    },
+    // Component without children (e.g. b, b1, b2, r, l, d)
+    {
+      selector: 'node[type = "component"]:childless',
+      style: {
+        width: 'label',
+        height: 'label',
+        padding: '6px',
+        'text-valign': 'center',
+        'text-margin-y': 0,
+      },
+    },
+
+    // ── State (always a leaf) ────────────────────────────────────────
+    {
+      selector: 'node[type = "state"]',
+      style: {
+        'background-color': '#FFCC00',
+        'border-color': '#000000',
+        'border-width': 1,
+        padding: '6px',
+        width: 'label',
+        height: 'label',
+        'min-width': 20,
+        'min-height': 20,
+        shape: 'ellipse',
+        'z-index': 25,
+        'z-index-compare': 'manual',
+      },
+    },
+
+    // ── Edges ────────────────────────────────────────────────────────
+    // Normal inter-node edges
+    {
+      selector: 'edge',
+      style: {
+        width: 1,
+        'curve-style': 'bezier',
+        'line-color': edgeColor,
+        'target-arrow-color': edgeColor,
+        'target-arrow-shape': 'none',
+        // Clip edges at the visual boundary of compound parents,
+        // reducing the "edge passes through parent box" artefact.
+        'source-endpoint': 'outside-to-node-or-label',
+        'target-endpoint': 'outside-to-node-or-label',
+        'z-index': 0,
+        'z-index-compare': 'manual',
+      },
+    },
+    // Self-loop edges (e.g. FGFR d-d dimerisation).
+    // Cytoscape detects loop edges automatically; we switch to the
+    // dedicated loop curve style so they render as a clean arc instead
+    // of collapsing into an invisible zero-length bezier.
+    {
+      selector: 'edge:loop',
+      style: {
+        'curve-style': 'unbundled-bezier',
+        'loop-direction': '-45deg',
+        'loop-sweep': '-90deg',
+        // control-point-distances / weights give a visible lobe
+        'control-point-distances': '40',
+        'control-point-weights': '0.5',
+      },
+    },
+
+    // ── Interaction highlights ────────────────────────────────────────
+    {
+      selector: '.highlighted',
+      style: {
+        'border-width': 4,
+        'border-color': '#0ea5e9',
+        'line-color': '#0ea5e9',
+      },
+    },
+  ];
+}
+
+/**
+ * Post-layout pass: re-pack children inside compound nodes so they sit in
+ * a tight horizontal row below the parent label. Processes leaf-level
+ * compounds (components with state children) first, then molecule-level
+ * compounds, so that component bounding boxes are already compact when
+ * molecules are processed.
+ *
+ * This compensates for the fact that no Cytoscape layout engine accounts
+ * for compound-node label zones — they place children based purely on
+ * forces / ranks, which can spread them far apart and overlap labels.
+ */
+function packCompoundChildren(cy: cytoscape.Core): void {
+  const CHILD_GAP = 10;
+  const MOL_LABEL_OFFSET = 20;
+  const COMP_LABEL_OFFSET = 14;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const measureLabel = (text: string, bold: boolean, fontSize = 14): number => {
+    ctx.font = `${bold ? 'bold ' : ''}${fontSize}px system-ui, -apple-system, sans-serif`;
+    return ctx.measureText(text).width + 16;
+  };
+
+  const packLevel = (
+    selector: string,
+    paddingLR: number,
+    isBold: boolean,
+    labelOffset: number,
+  ) => {
+    cy.nodes(selector).forEach((parent) => {
+      const children = parent.children();
+      if (children.length === 0) return;
+
+      const infos = children.map((child) => {
+        const bb = child.boundingBox({ includeLabels: true, includeOverlays: false });
+        return { node: child, w: bb.x2 - bb.x1, h: bb.y2 - bb.y1 };
+      });
+
+      let sumX = 0;
+      let sumY = 0;
+      children.forEach((c) => {
+        const p = c.position();
+        sumX += p.x;
+        sumY += p.y;
+      });
+      const anchorX = sumX / children.length;
+      const anchorY = sumY / children.length;
+
+      const childrenRowW =
+        infos.reduce((s, i) => s + i.w, 0) + (infos.length - 1) * CHILD_GAP;
+      const labelText = parent.data('label') || '';
+      const labelW = measureLabel(labelText, isBold);
+      const minRowW = Math.max(childrenRowW, labelW - 2 * paddingLR);
+      const extra = minRowW - childrenRowW;
+      const effectiveGap =
+        CHILD_GAP + (infos.length > 1 ? Math.max(0, extra / (infos.length - 1)) : 0);
+
+      const totalW =
+        infos.reduce((s, i) => s + i.w, 0) + (infos.length - 1) * effectiveGap;
+      let curX = anchorX - totalW / 2;
+      const targetY = anchorY + labelOffset;
+      for (const info of infos) {
+        info.node.position({ x: curX + info.w / 2, y: targetY });
+        curX += info.w + effectiveGap;
+      }
+    });
+  };
+
+  packLevel('[type = "component"]:parent', 10, false, COMP_LABEL_OFFSET);
+  packLevel('[type = "molecule"]:parent', 30, true, MOL_LABEL_OFFSET);
+}
 
 export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, selectedRuleId, onSelectRule, ruleOverlay, dynamicSnapshot }) => {
   const [isLayoutRunning, setIsLayoutRunning] = useState(false);
   const [layoutDone, setLayoutDone] = useState(false);
-  const [activeLayout, setActiveLayout] = useState<LayoutType>('hierarchical');
+  const [activeLayout, setActiveLayout] = useState<LayoutType>('fcose');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const onSelectRuleRef = useRef(onSelectRule);
@@ -174,85 +441,11 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
     cyRef.current?.destroy();
 
     const isDark = document.documentElement.classList.contains('dark');
-    const edgeColor = isDark ? '#94a3b8' : '#000000';
-    const textColor = isDark ? '#ffffff' : '#000000';
-
     const cy = cytoscape({
       container: containerRef.current,
       elements,
       style: [
-        {
-          selector: 'node',
-          style: {
-            'text-halign': 'center',
-            'text-valign': 'center',
-            'font-size': 14,
-            'text-wrap': 'none',
-            'text-max-width': '10000px',
-            color: '#000000',
-            label: 'data(label)',
-          },
-        },
-        {
-          selector: 'node[type = "molecule"]',
-          style: {
-            'background-color': '#D2D2D2',
-            'border-color': '#000000',
-            'border-width': 1,
-            'font-weight': 700,
-            shape: 'round-rectangle',
-            padding: '12px',
-          },
-        },
-        {
-          selector: 'node[type = "compartment"]',
-          style: {
-            'background-color': isDark ? '#1e1b4b' : '#eef2ff',
-            'border-color': '#6366f1',
-            'border-width': 2,
-            'border-style': 'dashed',
-            'font-size': 16,
-            'font-weight': 700,
-            padding: '20px',
-          },
-        },
-        {
-          selector: 'node[type = "component"]',
-          style: {
-            'background-color': '#FFFFFF',
-            'border-color': '#000000',
-            'border-width': 1,
-            shape: 'round-rectangle',
-            padding: '6px',
-          },
-        },
-        {
-          selector: 'node[type = "state"]',
-          style: {
-            'background-color': '#FFCC00',
-            'border-color': '#000000',
-            'border-width': 1,
-            padding: '4px',
-          },
-        },
-        {
-          selector: 'edge',
-          style: {
-            width: 1,
-            'curve-style': 'bezier',
-            'line-color': edgeColor,
-            'target-arrow-color': edgeColor,
-            'target-arrow-shape': 'none',
-          },
-        },
-        {
-          selector: '.highlighted',
-          style: {
-            'border-width': 4,
-            'border-color': '#0ea5e9',
-            'line-color': '#0ea5e9',
-          },
-        },
+        ...getContactMapStyles(isDark),
         ...ruleOverlayStyles,
         ...dynamicOverlayStyles,
       ],
@@ -263,6 +456,7 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
       // Execute true layout algorithm once Cytoscape is natively attached.
       const initialLayout = cy.layout({ ...BASE_LAYOUT, animate: false });
       initialLayout.on('layoutstop', () => {
+        packCompoundChildren(cy);
         // Guarantee fit across React rendering paints and container resizing 
         const forceViewport = () => {
           cyRef.current?.resize();
@@ -293,6 +487,9 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
     });
 
     cyRef.current = cy;
+    if (typeof window !== 'undefined') {
+      (window as any).__contactMapCy = cy;
+    }
 
     const ro = new ResizeObserver(() => {
       const c = cyRef.current;
@@ -304,6 +501,9 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
     return () => {
       ro.disconnect();
       cy.off('tap');
+      if (typeof window !== 'undefined' && (window as any).__contactMapCy === cy) {
+        (window as any).__contactMapCy = null;
+      }
       cyRef.current?.destroy();
       cyRef.current = null;
     };
@@ -328,6 +528,7 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
       const layout = cy.layout(LAYOUT_CONFIGS[layoutType]);
       layout.run();
       layout.on('layoutstop', () => {
+        packCompoundChildren(cy);
         setIsLayoutRunning(false);
         cy.fit(undefined, 30);
       });
@@ -407,14 +608,14 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
       <div className="flex flex-col gap-1 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="flex items-center gap-1">
           <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">Layout:</span>
-          <Button variant={activeLayout === 'hierarchical' ? 'primary' : 'subtle'} onClick={() => runLayout('hierarchical')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Hierarchical (yED-like)">
+          <Button variant={activeLayout === 'fcose' ? 'primary' : 'subtle'} onClick={() => runLayout('fcose')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Smart Compound Layout (Default)">
+            {isLayoutRunning && activeLayout === 'fcose' ? <LoadingSpinner className="w-3 h-3" /> : '✨ Smart'}
+          </Button>
+          <Button variant={activeLayout === 'hierarchical' ? 'primary' : 'subtle'} onClick={() => runLayout('hierarchical')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Hierarchical (dagre)">
             {isLayoutRunning && activeLayout === 'hierarchical' ? <LoadingSpinner className="w-3 h-3" /> : '↓ Hier'}
           </Button>
           <Button variant={activeLayout === 'cose' ? 'primary' : 'subtle'} onClick={() => runLayout('cose')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Force-Directed (Standard)">
             {isLayoutRunning && activeLayout === 'cose' ? <LoadingSpinner className="w-3 h-3" /> : '⚡ Cose'}
-          </Button>
-          <Button variant={activeLayout === 'fcose' ? 'primary' : 'subtle'} onClick={() => runLayout('fcose')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Fast Compound Force-Directed">
-            {isLayoutRunning && activeLayout === 'fcose' ? <LoadingSpinner className="w-3 h-3" /> : '✨ Smart'}
           </Button>
           <Button variant={activeLayout === 'grid' ? 'primary' : 'subtle'} onClick={() => runLayout('grid')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Grid Layout">
             {isLayoutRunning && activeLayout === 'grid' ? <LoadingSpinner className="w-3 h-3" /> : '▦ Grid'}
@@ -439,14 +640,18 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
         </div>
       </div>
 
-      <div className="relative w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+      <div className="relative w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg shadow-sm" data-testid="contact-map-panel">
         {!layoutDone && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 dark:bg-slate-900/70 rounded-lg">
             <LoadingSpinner className="w-8 h-8 text-[#0ea5e9]" />
             <span className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-400 animate-pulse">Computing Layout...</span>
           </div>
         )}
-        <div ref={containerRef} className={`w-full h-[600px] rounded-lg transition-opacity duration-300 ${layoutDone ? 'opacity-100' : 'opacity-0'}`} />
+        <div
+          ref={containerRef}
+          data-testid="contact-map-canvas"
+          className={`w-full h-[600px] rounded-lg transition-opacity duration-300 ${layoutDone ? 'opacity-100' : 'opacity-0'}`}
+        />
       </div>
 
       {/* Legend rendered below the graph container */}
@@ -475,3 +680,5 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
     </div>
   );
 };
+
+

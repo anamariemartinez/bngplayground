@@ -225,5 +225,7 @@ public_models_compatibility.json
 public_atomizer_report.json
 
 .serena/
+output/
+AGENTS-COLLECTION/
 
 # End of .gitignore

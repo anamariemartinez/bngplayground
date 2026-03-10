@@ -1,14 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-    handleParseBngl,
-    handleGenerateNetwork,
-    handleSimulate,
-    handleParameterScan,
-    handleValidateModel,
-    handleGetContactMap,
-    handleFitParameters,
-    handleDiagnose
-} from '../src/index';
+import { handleParseBngl } from '../src/handlers/parseBngl';
+import { handleGenerateNetwork } from '../src/handlers/generateNetwork';
+import { handleSimulate } from '../src/handlers/simulate';
+import { handleParameterScan } from '../src/handlers/parameterScan';
+import { handleValidateModel } from '../src/handlers/validateModel';
+import { handleGetContactMap } from '../src/handlers/getContactMap';
+import { handleFitParameters } from '../src/handlers/fitParameters';
+import { handleDiagnose } from '../src/handlers/diagnose';
 
 const simpleModel = `
 begin parameters
