@@ -97,7 +97,7 @@ export const VSCodeExportModal: React.FC<VSCodeExportModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 dark:border-slate-700 dark:border-slate-700">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
@@ -119,15 +119,15 @@ export const VSCodeExportModal: React.FC<VSCodeExportModalProps> = ({
           </div>
 
           <div className="space-y-3 mb-8">
-            <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-800">
-              <span className="text-xs text-slate-500 font-mono truncate flex-1">{modelName || 'model'}.bngl</span>
+            <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-800">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate flex-1">{modelName || 'model'}.bngl</span>
               <Button variant="secondary" onClick={handleDownloadOnly} className="h-7 text-[10px] px-2">
                 Download
               </Button>
             </div>
             
-            <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-800">
-              <span className="text-xs text-slate-500 font-mono flex-1">Copy code to clipboard</span>
+            <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-800">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono flex-1">Copy code to clipboard</span>
               <Button variant="secondary" onClick={handleCopy} className="h-7 text-[10px] px-2 min-w-[70px]">
                 {copyStatus === 'copied' ? 'Copied!' : 'Copy'}
               </Button>
@@ -154,7 +154,7 @@ export const VSCodeExportModal: React.FC<VSCodeExportModalProps> = ({
 
           {/* Help note shown if opening didn't result in the model being displayed in VS Code */}
           {showHelp && (
-            <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-800 text-sm">
+            <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/50 rounded border border-slate-100 dark:border-slate-800 text-sm">
               <strong>VS Code opened but model did not appear?</strong>
               <ul className="mt-2 list-disc list-inside text-xs">
                 <li>Ensure the <a href="https://marketplace.visualstudio.com/items?itemName=als251.bngl" target="_blank" rel="noreferrer" className="text-blue-500 underline">BioNetGen extension</a> is installed.</li>

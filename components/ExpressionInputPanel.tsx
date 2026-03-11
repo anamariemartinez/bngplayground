@@ -174,7 +174,7 @@ export const ExpressionInputPanel: React.FC<ExpressionInputPanelProps> = ({
   }, [expressions, onExpressionsChange]);
 
   return (
-    <div className="border-t border-slate-200 dark:border-slate-700 pt-3 mt-3">
+    <div className="border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 pt-3 mt-3">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 hover:text-primary transition-colors"
@@ -192,13 +192,13 @@ export const ExpressionInputPanel: React.FC<ExpressionInputPanelProps> = ({
         <div className="mt-3 space-y-3 pl-4">
           {/* Mode toggle */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">Mode:</span>
-            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Mode:</span>
+            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700 text-xs">
               <button
                 onClick={() => setMode('math')}
                 className={`px-2.5 py-1 rounded-l-lg transition-colors ${mode === 'math'
                     ? 'bg-primary text-white'
-                    : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    : 'bg-white dark:bg-slate-900 dark:bg-slate-800 hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-700'
                   }`}
               >
                 Math
@@ -209,7 +209,7 @@ export const ExpressionInputPanel: React.FC<ExpressionInputPanelProps> = ({
                 title={hasSpeciesData ? 'Define observable using BNGL pattern' : 'Requires species-level simulation data'}
                 className={`px-2.5 py-1 rounded-r-lg transition-colors ${mode === 'bngl'
                     ? 'bg-primary text-white'
-                    : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    : 'bg-white dark:bg-slate-900 dark:bg-slate-800 hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-700'
                   } ${!hasSpeciesData ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 BNGL Pattern
@@ -217,19 +217,19 @@ export const ExpressionInputPanel: React.FC<ExpressionInputPanelProps> = ({
             </div>
           </div>
 
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             {mode === 'math' ? (
               <>
                 Compute from observables: {' '}
                 {observableNames.slice(0, 3).map((n, i) => (
-                  <code key={n} className="bg-slate-100 dark:bg-slate-700 px-1 rounded text-xs">
+                  <code key={n} className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 px-1 rounded text-xs">
                     {n}{i < 2 && observableNames.length > i + 1 ? ', ' : ''}
                   </code>
                 ))}
                 {observableNames.length > 3 && '...'}
               </>
             ) : (
-              <>Define a BNGL observable pattern like <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">A(b!+)</code> or <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">A.B</code></>
+              <>Define a BNGL observable pattern like <code className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 px-1 rounded">A(b!+)</code> or <code className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 px-1 rounded">A.B</code></>
             )}
           </p>
 
@@ -254,12 +254,12 @@ export const ExpressionInputPanel: React.FC<ExpressionInputPanelProps> = ({
               />
 
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute bottom-full left-0 w-full mb-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+                <div className="absolute bottom-full left-0 w-full mb-1 bg-white dark:bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
                   {suggestions.map((s, i) => (
                     <button
                       key={i}
                       onClick={() => applySuggestion(s.name)}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-between border-b border-slate-50 dark:border-slate-700 last:border-0"
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-700 flex items-center justify-between border-b border-slate-50 dark:border-slate-700 last:border-0"
                     >
                       <span className="font-mono truncate mr-2">{s.name}</span>
                       <span className="text-[10px] uppercase text-slate-400 font-bold shrink-0">{s.type}</span>
@@ -285,7 +285,7 @@ export const ExpressionInputPanel: React.FC<ExpressionInputPanelProps> = ({
                 >
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: expr.color }} />
                   <span className="font-medium">{expr.name}</span>
-                  <span className="text-slate-500">
+                  <span className="text-slate-500 dark:text-slate-400">
                     {expr.type === 'bngl' && '📦 '}
                     = {expr.expression}
                   </span>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatValue } from '../../src/utils/formatValue';
 
 export type LegendEntry = {
   name: string;
@@ -92,16 +93,11 @@ export const InlineLegend: React.FC<{
 
 export function formatYAxisTick(value: unknown): string {
   if (typeof value !== 'number') return String(value);
-  const abs = Math.abs(value);
-  if (abs >= 1e9) return (value / 1e9).toFixed(1) + 'B';
-  if (abs >= 1e6) return (value / 1e6).toFixed(1) + 'M';
-  if (abs >= 1e3) return (value / 1e3).toFixed(1) + 'K';
-  if (abs < 0.01 && abs !== 0) return value.toExponential(1);
-  return value.toFixed(0);
+  return formatValue(value);
 }
 
-export function formatTooltipNumber(value: any, digits = 2): string {
+export function formatTooltipNumber(value: any, _digits = 2): string {
   const num = typeof value === 'number' ? value : Number.parseFloat(value);
   if (!Number.isFinite(num)) return String(value);
-  return num.toFixed(digits);
+  return formatValue(num);
 }

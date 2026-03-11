@@ -106,3 +106,36 @@ export type { NetworkTrace, ExpansionEvent, DebuggerNetwork, TraceResult, RuleBl
 // ── Interfaces ───────────────────────────────────────────────────────
 export type { SimulationEngine, ExpandedNetwork } from './interfaces/SimulationEngine';
 export { EngineRegistry } from './interfaces/SimulationEngine';
+
+// ── Sensitivity Analysis (Track E) ──────────────────────────────────
+export { sobolSensitivity, generateSaltelliSamples } from './services/analysis/SobolSensitivity';
+export type { SobolResult, SobolAnalysisConfig, SobolSampleSet, SobolSamplingOptions } from './services/analysis/SobolSensitivity';
+export { computeFIM, computeCollinearity } from './services/analysis/FisherInformationMatrix';
+export type { FIMConfig, FIMResult, CollinearityResult } from './services/analysis/FisherInformationMatrix';
+export { profileLikelihood } from './services/analysis/ProfileLikelihood';
+export type { ProfileLikelihoodConfig, ProfileLikelihoodResult } from './services/analysis/ProfileLikelihood';
+
+// ── Bayesian Inference (Track G) ────────────────────────────────────
+export { abcSMC } from './services/inference/ABCSMC';
+export type { ABCSMCConfig, ABCSMCResult, ABCSMCProgress } from './services/inference/ABCSMC';
+export { createPrior } from './services/inference/priors';
+export type { PriorDistribution, PriorSpec } from './services/inference/priors';
+export { weightedPercentile, weightedStats, kde, effectiveSampleSize, systematicResample, weightedCovariance, interpolateAtTime } from './services/inference/posteriorAnalysis';
+
+// ── Standards & Export (Track F) ────────────────────────────────────
+export { generateSedML } from './services/export/SedMLWriter';
+export type { SedMLExportOptions } from './services/export/SedMLWriter';
+export { generateOMEX } from './services/export/OMEXWriter';
+export type { OMEXExportOptions } from './services/export/OMEXWriter';
+export { SBMLWriter } from './services/export/SBMLWriter';
+export type { SBMLWriterOptions } from './services/export/SBMLWriter';
+export { inferReactionSBO, inferRateLawSBO, SBO } from './services/export/SBOAnnotations';
+export { generateMIRIAMBlock, suggestMIRIAMAnnotations, resolveAnnotations, createUniProtResolver } from './services/export/MIRIAMAnnotation';
+export type { MIRIAMAnnotation, IdentifierResolver } from './services/export/MIRIAMAnnotation';
+
+// ── Math Utils ──────────────────────────────────────────────────────
+export { normInv, chi2Quantile, jacobiEigenDecomposition, matMul, matTranspose, invertSymmetricMatrix } from './utils/mathUtils';
+
+// ── ZIP Utils ───────────────────────────────────────────────────────
+export { createZip } from './utils/miniZip';
+export type { ZipEntry } from './utils/miniZip';

@@ -20,7 +20,7 @@ export const HelpSection: React.FC<HelpSectionProps> = ({
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className={`mb-4 overflow-hidden rounded-lg border border-blue-100 bg-blue-50/50 dark:border-blue-900/30 dark:bg-blue-900/10 transition-all ${className}`}>
+    <div className={`mb-4 shrink-0 overflow-hidden rounded-lg border border-blue-100 bg-blue-50/50 dark:border-blue-900/30 dark:bg-blue-900/10 transition-all ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex w-full items-center justify-between px-4 py-2 text-left hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
@@ -59,7 +59,7 @@ export const HelpSection: React.FC<HelpSectionProps> = ({
           )}
           
           {plotDescription && (
-            <div className="rounded-md bg-white/60 dark:bg-slate-900/40 p-3 border border-blue-100/50 dark:border-blue-800/30">
+            <div className="rounded-md bg-white dark:bg-slate-900/60 dark:bg-slate-900/40 p-3 border border-blue-100/50 dark:border-blue-800/30">
               <h5 className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 opacity-70 mb-1">
                 Understanding the Plot
               </h5>

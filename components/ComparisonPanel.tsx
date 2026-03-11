@@ -183,7 +183,7 @@ export const ComparisonPanel: React.FC<ComparisonPanelProps> = ({ model, baseRes
           <select
             value={selectedParam}
             onChange={(e) => setSelectedParam(e.target.value)}
-            className="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm bg-white dark:bg-slate-800"
+            className="w-full rounded border border-slate-300 dark:border-slate-600 dark:border-slate-600 px-2 py-1.5 text-sm bg-white dark:bg-slate-900 dark:bg-slate-800"
           >
             <option value="">Select parameter...</option>
             {parameterEntries.map(([name, value]) => (
@@ -201,7 +201,7 @@ export const ComparisonPanel: React.FC<ComparisonPanelProps> = ({ model, baseRes
           <select
             value={comparisonFactor}
             onChange={(e) => setComparisonFactor(Number(e.target.value))}
-            className="w-full rounded border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-sm bg-white dark:bg-slate-800"
+            className="w-full rounded border border-slate-300 dark:border-slate-600 dark:border-slate-600 px-2 py-1.5 text-sm bg-white dark:bg-slate-900 dark:bg-slate-800"
           >
             <option value={0.1}>0.1×</option>
             <option value={0.5}>0.5×</option>
@@ -230,7 +230,7 @@ export const ComparisonPanel: React.FC<ComparisonPanelProps> = ({ model, baseRes
       )}
 
       {!baseResults && (
-        <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded text-center text-slate-500">
+        <div className="p-4 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 rounded text-center text-slate-500 dark:text-slate-400">
           Run a simulation first to enable comparison.
         </div>
       )}
@@ -256,15 +256,21 @@ export const ComparisonPanel: React.FC<ComparisonPanelProps> = ({ model, baseRes
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.3)" />
               <XAxis
                 dataKey="time"
-                label={{ value: 'Time', position: 'insideBottom', offset: -5, fontWeight: 'bold' }}
+                label={{ value: 'Time', position: 'insideBottom', offset: -5, fontWeight: 'bold', fill: 'currentColor' }}
                 type="number"
                 domain={['dataMin', 'dataMax']}
+                tick={{ fontSize: 11, fill: 'currentColor' }}
+                tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
               />
               <YAxis
-                label={{ value: 'Concentration', angle: -90, position: 'insideLeft', fontWeight: 'bold' }}
+                label={{ value: 'Concentration', angle: -90, position: 'insideLeft', fontWeight: 'bold', fill: 'currentColor', offset: 15, style: { textAnchor: 'middle' } }}
                 domain={[0, 'dataMax']}
                 allowDataOverflow={true}
                 tickFormatter={formatYAxisTick}
+                tick={{ fontSize: 11, fill: 'currentColor' }}
+                tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
               />
               <Tooltip
                 formatter={(value: any, name: any) => {
@@ -276,39 +282,37 @@ export const ComparisonPanel: React.FC<ComparisonPanelProps> = ({ model, baseRes
                 labelFormatter={(label) => `Time: ${typeof label === 'number' ? label.toFixed(2) : label}`}
               />
 
-              {observablesToPlot.map((name, i) => {
-                const color = CHART_COLORS[i % CHART_COLORS.length];
-                const isVisible = visibleObservables.has(name);
-                return (
-                  <React.Fragment key={name}>
-                    <Line
-                      type="monotone"
-                      dataKey={`${name}_base`}
-                      stroke={color}
-                      strokeWidth={1.75}
-                      dot={false}
-                      hide={!isVisible}
-                      name={`${name}_base`}
-                      animationDuration={1500}
-                      animationEasing="ease-out"
-                      isAnimationActive={true}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey={`${name}_comp`}
-                      stroke={color}
-                      strokeWidth={1.75}
-                      strokeDasharray="5 3"
-                      dot={false}
-                      hide={!isVisible}
-                      name={`${name}_comp`}
-                      animationDuration={1500}
-                      animationEasing="ease-out"
-                      isAnimationActive={true}
-                    />
-                  </React.Fragment>
-                );
-              })}
+              {observablesToPlot.map((name, i) => (
+                <Line
+                  key={`${name}_base`}
+                  type="monotone"
+                  dataKey={`${name}_base`}
+                  stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                  strokeWidth={1.75}
+                  dot={false}
+                  hide={!visibleObservables.has(name)}
+                  name={`${name}_base`}
+                  animationDuration={1500}
+                  animationEasing="ease-out"
+                  isAnimationActive={true}
+                />
+              ))}
+              {observablesToPlot.map((name, i) => (
+                <Line
+                  key={`${name}_comp`}
+                  type="monotone"
+                  dataKey={`${name}_comp`}
+                  stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                  strokeWidth={1.75}
+                  strokeDasharray="5 3"
+                  dot={false}
+                  hide={!visibleObservables.has(name)}
+                  name={`${name}_comp`}
+                  animationDuration={1500}
+                  animationEasing="ease-out"
+                  isAnimationActive={true}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
 
@@ -321,7 +325,7 @@ export const ComparisonPanel: React.FC<ComparisonPanelProps> = ({ model, baseRes
             />
           )}
 
-          <div className="text-center text-xs text-slate-500 mt-2">
+          <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-2">
             Click legend to toggle series. Double-click legend to isolate/restore.
           </div>
         </div>

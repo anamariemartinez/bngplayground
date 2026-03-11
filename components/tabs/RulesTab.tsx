@@ -145,7 +145,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
             onClick={() => setSelectedAtomId(atom)}
             className={`rounded-full border px-3 py-1 text-xs transition-colors ${selectedAtomId === atom
               ? `${accent} border-transparent text-white`
-              : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+              : 'border-slate-200 dark:border-slate-700 bg-white text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:border-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
               }`}
           >
             {insights?.atomMetadata[atom]?.label ?? atom}
@@ -166,7 +166,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
         <select
           value={selectedRuleId || ''}
           onChange={(e) => onSelectRule?.(e.target.value)}
-          className="flex-1 max-w-md px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="flex-1 max-w-md px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="" disabled>Select a rule ({model.reactionRules.length} available)</option>
           {model.reactionRules.map((rule, index) => {
@@ -196,7 +196,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
 
       {/* Main Content Area - Full Width */}
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
-        <section className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900 shrink-0 overflow-y-auto max-h-[15%]">
+        <section className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900 shrink-0 overflow-y-auto max-h-[15%]">
           <div className="flex flex-col gap-4">
             <div>
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -206,7 +206,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
                 Follow how a rule manipulates structural atoms, then inspect their time courses.
               </p>
               {selectedRuleClassification && (
-                <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+                <div className="mt-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-2 text-xs text-slate-600 dark:text-slate-400 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
                   <RuleChangeBadges summary={selectedRuleClassification} size="xs" />
                   <p className="mt-1 text-[11px] leading-4 text-slate-600 dark:text-slate-300">
                     {renderHumanSummary(selectedRuleClassification)}
@@ -228,7 +228,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
           )}
 
           {selectedAtomMeta && (
-            <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/70">
+            <div className="mt-4 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/70">
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="font-semibold text-slate-700 dark:text-slate-200">Focused atom:</span>
                 <span className="rounded bg-sky-100 px-2 py-0.5 font-mono text-[11px] text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">
@@ -261,7 +261,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
                           key={ruleId}
                           type="button"
                           onClick={() => onSelectRule?.(ruleId)}
-                          className="ml-1 rounded border border-slate-300 px-2 py-0.5 font-medium text-slate-600 hover:border-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500"
+                          className="ml-1 rounded border border-slate-300 dark:border-slate-600 px-2 py-0.5 font-medium text-slate-600 dark:text-slate-400 hover:border-slate-400 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-500"
                         >
                           {insights?.ruleImpacts[ruleId]?.label ?? ruleId}
                         </button>
@@ -273,7 +273,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
           )}
         </section>
 
-        <section className="flex-1 overflow-y-auto p-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+        <section className="flex-1 overflow-y-auto p-4 pt-4 border-t border-slate-200 dark:border-slate-700 dark:border-slate-700">
           {results ? (
             <ResultsChart
               results={results}
@@ -284,7 +284,7 @@ export const RulesTab: React.FC<RulesTabProps> = ({ model, results, selectedRule
               highlightedSeries={highlightedSeries}
             />
           ) : (
-            <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-sm text-slate-500 dark:text-slate-400 dark:border-slate-700 dark:text-slate-400">
               Run a simulation to enable the time-course overlay.
             </div>
           )}

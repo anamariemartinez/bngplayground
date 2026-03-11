@@ -146,7 +146,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
     <Modal isOpen={isOpen} onClose={onClose} title="BNGL Models" size="3xl">
       <div className="flex flex-col">
         <Tabs>
-          <div className="px-1 border-b border-slate-200 dark:border-slate-700">
+          <div className="px-1 border-b border-slate-200 dark:border-slate-700 dark:border-slate-700">
             <TabList>
               <Tab>Example Gallery</Tab>
               <Tab>BioModels Repository</Tab>
@@ -207,7 +207,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                         onClick={() => setSelectedCategory(category.id)}
                         className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${selectedCategory === category.id
                             ? 'bg-primary text-white'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
                           }`}
                       >
                         {category.name} ({category.models.length})
@@ -232,7 +232,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                       {focusedExample === example.id ? (
                         <div className="text-xs text-primary">Focused</div>
                       ) : (
-                        <div className="text-xs text-slate-500">&nbsp;</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">&nbsp;</div>
                       )}
                     </div>
                     <div className="flex-grow">
@@ -267,7 +267,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                         }
                       }}
                       disabled={loadingId === example.id}
-                      className="mt-3 w-full text-center px-4 py-2 text-sm font-semibold bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-wait"
+                      className="mt-3 w-full text-center px-4 py-2 text-sm font-semibold bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors text-slate-800 dark:text-slate-100 disabled:opacity-50 disabled:cursor-wait"
                     >
                       {loadingId === example.id ? 'Loading...' : 'Load Model'}
                     </button>
@@ -284,7 +284,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                 <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
                   Search and import public models directly from the BioModels repository (SBML format).
                 </p>
-                <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-md border border-slate-100 dark:border-slate-700">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/40 rounded-md border border-slate-100 dark:border-slate-700">
                   <BioModelsSearch onImportById={async (id) => {
                     try {
                       const { normalizedId, sbmlText } = await fetchBioModelsSbml(id);

@@ -96,8 +96,8 @@ export const StructureAnalysisTab: React.FC<StructureAnalysisTabProps> = ({ mode
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <span className="text-xs inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-slate-700">Advanced</span>
-        <div className="text-sm text-slate-500">Use structural analyses after you have a model and basic plots.</div>
+        <span className="text-xs inline-flex items-center rounded bg-slate-100 dark:bg-slate-800/50 px-2 py-0.5 text-slate-700 dark:text-slate-300">Advanced</span>
+        <div className="text-sm text-slate-500 dark:text-slate-400">Use structural analyses after you have a model and basic plots.</div>
       </div>
       <div>
         <h3 className="text-lg font-medium mb-2 text-slate-800 dark:text-slate-200">Species Connectivity</h3>
@@ -115,7 +115,7 @@ export const StructureAnalysisTab: React.FC<StructureAnalysisTabProps> = ({ mode
           Lists of species whose total concentration remains constant throughout the simulation. This is a simplified analysis for basic cases.
         </p>
         {structuralProperties.conservationLaws.length > 0 ? (
-          <ul className="list-disc list-inside bg-slate-100 dark:bg-slate-800 p-4 rounded-md text-slate-700 dark:text-slate-200 font-mono text-sm">
+          <ul className="list-disc list-inside bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800 p-4 rounded-md text-slate-700 dark:text-slate-200 font-mono text-sm">
             {structuralProperties.conservationLaws.map((law, i) => (
               <li key={i}>{law}</li>
             ))}

@@ -23,7 +23,7 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose, focus }
                         <li><strong>Observables</strong> — Track specific molecular patterns during simulation</li>
                     </ul>
                     <h4>Example</h4>
-                    <pre className="text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded overflow-x-auto">
+                    <pre className="text-xs bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800 p-2 rounded overflow-x-auto">
                         {`# Define a kinase with a binding site and phosphorylation state
 A(b,Y~U~P)
 

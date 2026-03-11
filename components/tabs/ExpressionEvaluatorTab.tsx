@@ -172,10 +172,10 @@ export const ExpressionEvaluatorTab: React.FC<ExpressionEvaluatorTabProps> = ({
         </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Create custom metrics by combining observables with mathematical operations.
-          Available variables: <code className="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded">time</code>
+          Available variables: <code className="text-xs bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 px-1 rounded">time</code>
           {observableNames.slice(0, 5).map((name) => (
             <span key={name}>
-              , <code className="text-xs bg-slate-100 dark:bg-slate-700 px-1 rounded">{name}</code>
+              , <code className="text-xs bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 px-1 rounded">{name}</code>
             </span>
           ))}
           {observableNames.length > 5 && <span>, ...</span>}
@@ -293,7 +293,7 @@ export const ExpressionEvaluatorTab: React.FC<ExpressionEvaluatorTabProps> = ({
             />
           )}
 
-          <div className="text-center text-xs text-slate-500">
+          <div className="text-center text-xs text-slate-500 dark:text-slate-400">
             Click legend to toggle series. Double-click legend to isolate/restore.
           </div>
         </Card>

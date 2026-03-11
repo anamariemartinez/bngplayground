@@ -442,7 +442,7 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
 
   if (!model) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-slate-400 dark:text-slate-500 text-sm gap-2">
+      <div className="flex flex-col items-center justify-center h-64 text-slate-400 dark:text-slate-500 dark:text-slate-400 text-sm gap-2">
         <span className="text-3xl">🕸️</span>
         <p>Parse a BNGL model to enable network analysis.</p>
       </div>
@@ -517,7 +517,7 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
 
       {/* Loading placeholder */}
       {isLoading && (
-        <div className="flex items-center justify-center h-32 text-slate-400 dark:text-slate-500 gap-2 text-sm">
+        <div className="flex items-center justify-center h-32 text-slate-400 dark:text-slate-500 dark:text-slate-400 gap-2 text-sm">
           <LoadingSpinner className="w-8 h-8" />
           <span>{isExpandingNetwork ? 'Expanding reaction network…' : 'Running network analysis…'}</span>
         </div>
@@ -539,7 +539,7 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
               { label: 'Modularity', value: fmt(result.modularity) },
               { label: 'Connected', value: result.isConnected ? 'Yes' : 'No' },
             ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-2 flex flex-col min-w-0">
+              <div key={label} className="rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900 p-2 flex flex-col min-w-0">
                 <span className="text-[10px] leading-tight text-slate-500 dark:text-slate-400 truncate">{label}</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm mt-0.5 truncate">{String(value)}</span>
               </div>
@@ -551,7 +551,7 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
             {/* ---- Cytoscape viewer — follows ARGraphViewer / ContactMapViewer pattern ---- */}
             <div className="flex flex-col gap-2">
               {/* Toolbar */}
-              <div className="flex items-center gap-1 flex-wrap bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
+              <div className="flex items-center gap-1 flex-wrap bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700 shadow-sm">
                 <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">Layout:</span>
                 {(['hierarchical', 'fcose', 'grid', 'circle'] as LayoutType[]).map(lt => {
                   const labels: Record<LayoutType, string> = {
@@ -575,9 +575,9 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
               </div>
 
               {/* Graph canvas */}
-              <div className="relative w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+              <div className="relative w-full border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-900 rounded-lg shadow-sm">
                 {!layoutDone && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 dark:bg-slate-900/70 rounded-lg">
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-slate-900/70 dark:bg-slate-900/70 rounded-lg">
                     <LoadingSpinner className="w-8 h-8 text-[#21808D]" />
                     <span className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-400 animate-pulse">Computing Layout…</span>
                   </div>
@@ -589,8 +589,8 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
               </div>
 
               {/* Legend */}
-              <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 flex-wrap">
-                <span className="text-xs font-semibold text-slate-500 uppercase">Legend</span>
+              <div className="flex items-center gap-3 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700 flex-wrap">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Legend</span>
                 {Array.from({ length: Math.min(result.communityCount, 6) }, (_, i) => (
                   <div key={i} className="flex items-center gap-1">
                     <div className="w-3 h-3 rounded-full border border-white/50" style={{ backgroundColor: communityColor(i, result.communityCount) }} />
@@ -600,15 +600,15 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
                 {result.communityCount > 6 && <span className="text-xs text-slate-400">+{result.communityCount - 6} more</span>}
                 <div className="flex items-center gap-1 ml-2">
                   <div className="w-4 h-0 border-t border-slate-400" />
-                  <span className="text-xs text-slate-500">{directed ? 'directed edge' : 'edge'}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{directed ? 'directed edge' : 'edge'}</span>
                 </div>
                 <span className="text-xs text-slate-400 italic">size ∝ PageRank</span>
               </div>
             </div>
 
             {/* ---- Degree distribution (Recharts) ---- */}
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden flex flex-col">
-              <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-900 overflow-hidden flex flex-col">
+              <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300">
                 Degree Distribution
               </div>
               <div className="p-2 flex-1" style={{ minHeight: 280 }}>
@@ -634,14 +634,14 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
           </div>
 
           {/* Centrality table */}
-          <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700 overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
               Node Centrality Metrics
-              <span className="ml-2 font-normal text-slate-400 dark:text-slate-500">— click column headers to sort</span>
+              <span className="ml-2 font-normal text-slate-400 dark:text-slate-500 dark:text-slate-400">— click column headers to sort</span>
             </div>
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800 z-10">
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 z-10">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">Node</th>
                     <SortHeader colKey="degree" label="Degree" />
@@ -660,7 +660,7 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                   {sortedRows.slice(0, 200).map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                    <tr key={idx} className="hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-700/50 transition-colors">
                       <td className="px-3 py-1.5 font-mono text-slate-800 dark:text-slate-200 max-w-32 truncate" title={row.label}>
                         {row.label.length > 28 ? row.label.slice(0, 26) + '…' : row.label}
                       </td>
@@ -688,7 +688,7 @@ export const NetworkAnalysisTab: React.FC<Props> = ({ model }) => {
                 </tbody>
               </table>
               {sortedRows.length > 200 && (
-                <div className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700">
+                <div className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700">
                   Showing top 200 of {sortedRows.length} nodes — sort to see top ranked nodes.
                 </div>
               )}

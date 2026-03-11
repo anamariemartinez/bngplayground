@@ -158,10 +158,10 @@ export const RuleCartoon: React.FC<RuleCartoonProps> = ({
 }) => {
   const annotated = useMemo(() => annotateRule(rule), [rule]);
 
-  const containerClasses = `w-full rounded-lg border bg-slate-50 p-4 text-left transition dark:bg-slate-900 ${
+  const containerClasses = `w-full rounded-lg border bg-slate-50 dark:bg-slate-900/50 p-4 text-left transition dark:bg-slate-900 ${
     isSelected
       ? 'border-sky-500 ring-2 ring-offset-2 ring-sky-500 dark:border-sky-400 dark:ring-offset-slate-900'
-      : 'border-stone-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'
+      : 'border-stone-200 hover:border-slate-300 dark:border-slate-600 dark:border-slate-700 dark:hover:border-slate-600'
   }`;
 
   const handleSelect = () => {
@@ -178,7 +178,7 @@ export const RuleCartoon: React.FC<RuleCartoonProps> = ({
         <div className="mb-2 text-xs text-slate-500 dark:text-slate-400 italic">{rule.comment}</div>
       )}
       {classification && (
-        <div className="mb-4 rounded-md border border-slate-200 bg-white/80 p-2 text-xs text-slate-600 shadow-inner dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+        <div className="mb-4 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/80 p-2 text-xs text-slate-600 dark:text-slate-400 shadow-inner dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <RuleChangeBadges summary={classification} size="xs" />
           </div>

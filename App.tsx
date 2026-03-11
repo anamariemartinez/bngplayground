@@ -8,6 +8,8 @@ import { StatusMessage } from './components/ui/StatusMessage';
 import { AboutModal } from './components/AboutModal';
 import { bnglService } from './services/bnglService';
 import { exportToNet } from './services/exportNet';
+import { exportToSedML } from './services/exportSedML';
+import { exportToOMEX } from './services/exportOMEX';
 import { BNGLModel, SimulationOptions, SimulationResults, Status, ValidationWarning, EditorMarker } from './types';
 import { EXAMPLES, INITIAL_BNGL_CODE } from './constants';
 import { loadModelCode, setCachedCode, getCachedCode } from './services/modelLoader';
@@ -19,7 +21,7 @@ import { BNGLParser } from '@bngplayground/engine';
 import { validateBNGLModel, validationWarningsToMarkers } from './services/modelValidation';
 import { lintBNGL, lintDiagnosticsToMarkers } from './services/bnglLinter';
 import { getSharedModelFromUrl, clearModelFromUrl } from './src/utils/shareUrl';
-import { resolveAutoMethod } from '@bngplayground/engine';
+import { resolveAutoMethod, getSimulationOptionsFromParsedModel } from '@bngplayground/engine';
 import { parseParametersFromCode, isNumericLiteral, stripParametersBlock } from '@bngplayground/engine';
 
 const normalizeCode = (value: string) => value.replace(/\r\n/g, '\n').trim();
@@ -56,6 +58,9 @@ const findExampleById = (id?: string | null) => {
 
 function App() {
   const PANEL_MAX_HEIGHT = 'calc(100vh - 120px)';
+  const PANEL_MIN_HEIGHT = '800px';
+  const MIN_SPLIT_POSITION = 18; // percentage
+  const MAX_SPLIT_POSITION = 82; 
   const [code, setCode] = useState<string>(INITIAL_BNGL_CODE);
   // Refs for editor/code diffing and debounce timer for parameter-only edits
   const codeRef = useRef<string>(INITIAL_BNGL_CODE);
@@ -63,6 +68,10 @@ function App() {
   const [model, setModel] = useState<BNGLModel | null>(null);
   const [results, setResults] = useState<SimulationResults | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
+
+  // Split Panel resizing state
+  const [splitPosition, setSplitPosition] = useState(50); // percentage of screen
+  const isResizingRef = useRef(false);
 
   const [isSimulating, setIsSimulating] = useState(false);
   const [currentMethod, setCurrentMethod] = useState<'ode' | 'ssa' | 'nf' | 'nfsim'>('ode');
@@ -138,16 +147,62 @@ function App() {
 
   // Editor resizing support
   const [lastResized, setLastResized] = useState<number>(Date.now());
+  const [editorWidth, setEditorWidth] = useState(0);
+  const isCollapsed = editorWidth > 0 && editorWidth < 180;
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!editorContainerRef.current) return;
-    const observer = new ResizeObserver(() => {
+    const observer = new ResizeObserver((entries) => {
       setLastResized(Date.now());
+      if (entries[0]) {
+        setEditorWidth(entries[0].contentRect.width);
+      }
     });
     observer.observe(editorContainerRef.current);
     return () => observer.disconnect();
   }, []);
+
+  const handleMouseDown = useCallback(() => {
+    isResizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    isResizingRef.current = false;
+    document.body.style.cursor = 'default';
+    document.body.style.userSelect = 'auto';
+    setLastResized(Date.now());
+  }, []);
+
+  const mouseMoveRAF = useRef<number | null>(null);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizingRef.current) return;
+    
+    if (mouseMoveRAF.current) {
+        cancelAnimationFrame(mouseMoveRAF.current);
+    }
+
+    mouseMoveRAF.current = requestAnimationFrame(() => {
+        const percentage = (e.clientX / window.innerWidth) * 100;
+        if (percentage < 8) setSplitPosition(5); // Collapse
+        else if (percentage < MIN_SPLIT_POSITION) setSplitPosition(MIN_SPLIT_POSITION); // Enforce min width
+        else if (percentage > MAX_SPLIT_POSITION) setSplitPosition(MAX_SPLIT_POSITION);
+        else setSplitPosition(percentage);
+    });
+  }, [MIN_SPLIT_POSITION, MAX_SPLIT_POSITION]);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      if (mouseMoveRAF.current) cancelAnimationFrame(mouseMoveRAF.current);
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     simOptionsRef.current = simOptions;
@@ -296,6 +351,14 @@ function App() {
       setIsSimulating(false);
     }
   }, [model]);
+
+  const handleQuickRun = async () => {
+    const parsedModel = await handleParse();
+    if (parsedModel) {
+      const opts = getSimulationOptionsFromParsedModel(parsedModel, 'default');
+      await handleSimulate(opts, parsedModel);
+    }
+  };
 
   // Apply numeric parameter changes in-place without reparsing/simulating. Re-resolves dependent params and species initial concentrations.
   async function applyParameterPatch(changes: Map<string, string>, currentModel: BNGLModel | null) {
@@ -861,6 +924,62 @@ function App() {
     }
   };
 
+  const handleExportSedML = async () => {
+    if (!model) {
+      setStatus({ type: 'warning', message: 'No model to export. Parse or load a model first.' });
+      return;
+    }
+    setStatus({ type: 'info', message: 'Generating SED-ML...' });
+    try {
+      const xml = exportToSedML(model, {
+        t_end: simOptions?.t_end || 100,
+        n_steps: simOptions?.n_steps || 100,
+        method: (simOptions?.method as any) || 'ode'
+      });
+      const blob = new Blob([xml], { type: 'application/xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${loadedModelName?.replace(/\s+/g, '_') || 'model'}.sedml`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus({ type: 'success', message: 'SED-ML export generated.' });
+    } catch (e) {
+      setStatus({ type: 'error', message: 'Failed to export SED-ML.' });
+      console.warn('SED-ML export failed', e);
+    }
+  };
+
+  const handleExportOMEX = async () => {
+    if (!model) {
+      setStatus({ type: 'warning', message: 'No model to export. Parse or load a model first.' });
+      return;
+    }
+    setStatus({ type: 'info', message: 'Generating OMEX archive...' });
+    try {
+      const data = exportToOMEX(model, code, {
+        modelName: loadedModelName || 'model',
+        simulationOptions: {
+          t_end: simOptions?.t_end || 100,
+          n_steps: simOptions?.n_steps || 100,
+          method: (simOptions?.method as any) || 'ode'
+        }
+      });
+      // Convert to Blob; slice(0) ensures we have a standard ArrayBuffer, avoiding SharedArrayBuffer type mismatches.
+      const blob = new Blob([data.slice(0)], { type: 'application/omex+zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${loadedModelName?.replace(/\s+/g, '_') || 'model'}.omex`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus({ type: 'success', message: 'OMEX export generated.' });
+    } catch (e) {
+      setStatus({ type: 'error', message: 'Failed to export OMEX.' });
+      console.warn('OMEX export failed', e);
+    }
+  };
+
   const handleExportBNGL = () => {
     if (!code?.trim()) {
       setStatus({ type: 'warning', message: 'No BNGL code to export.' });
@@ -891,6 +1010,10 @@ function App() {
         }}
         onExportSBML={handleExportSBML}
         onImportSBML={handleImportSBML}
+        onExportSedML={handleExportSedML}
+        onExportOMEX={handleExportOMEX}
+        onExportNET={handleExportNET}
+        onExportBNGL={handleExportBNGL}
         code={code}
         modelName={loadedModelName}
         modelId={loadedModelId}
@@ -900,52 +1023,92 @@ function App() {
       />
 
 
-      <main className="flex-1 min-h-0 overflow-hidden">
-        <div className="container mx-auto flex h-full min-h-0 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <main className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-800">
+        <div className="container mx-auto flex min-h-full flex-col gap-6 p-4 sm:p-6 lg:p-8">
           <div className="fixed top-20 right-8 z-50 w-full max-w-sm">
             {status && <StatusMessage status={status} onClose={handleStatusClose} />}
           </div>
 
-          <div className="grid flex-1 min-h-0 grid-cols-1 gap-6 items-start lg:grid-cols-2">
-            <div ref={editorContainerRef} className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" style={{ maxHeight: PANEL_MAX_HEIGHT }}>
-              {viewMode === 'code' ? (
-                <EditorPanel
-                  lastResized={lastResized}
-                  code={code}
-                  onCodeChange={handleEditorCodeChange}
-                  onParse={handleParse}
-                  onSimulate={handleSimulate}
-
-                  isSimulating={isSimulating}
-                  modelExists={!!model}
-                  model={model}
-                  validationWarnings={validationWarnings}
-                  editorMarkers={editorMarkers}
-                  loadedModelName={loadedModelName}
-                  onModelNameChange={setLoadedModelName}
-                  onModelIdChange={setLoadedModelId}
-                  selection={editorSelection}
-                  onImportSBML={handleImportSBML}
-                  onExportSBML={handleExportSBML}
-                  onExportBNGL={handleExportBNGL}
-                  onExportNET={handleExportNET}
-                />
-              ) : (
-                <DesignerPanel
-                  text={designerText}
-                  onTextChange={setDesignerText}
-                  onCodeChange={handleEditorCodeChange}
-                  onParse={handleParse}
-                  onSimulate={(modelOverride) => handleSimulate({
-                    method: 'ode',
-                    t_end: 100,
-                    n_steps: 100,
-                    solver: 'auto'
-                  }, modelOverride)}
-                />
-              )}
+          <div className="flex flex-1 min-h-0 min-w-0 flex-col lg:flex-row gap-0 items-stretch">
+            {/* Left Panel: Editor */}
+            <div 
+              className={`flex min-h-0 min-w-0 flex-col overflow-hidden transition-[flex] duration-200 ${splitPosition <= 5 ? 'flex-none w-14' : ''}`} 
+              style={{ 
+                maxHeight: PANEL_MAX_HEIGHT,
+                minHeight: PANEL_MIN_HEIGHT,
+                flex: splitPosition <= 5 ? 'none' : `1 1 ${splitPosition}%`,
+                width: splitPosition <= 5 ? '56px' : '100%',
+                maxWidth: '100%'
+              }}
+            >
+              <div ref={editorContainerRef} className="h-full flex flex-col">
+                {viewMode === 'code' ? (
+                  <EditorPanel
+                    lastResized={lastResized}
+                    isCollapsed={splitPosition <= 5}
+                    onExpand={() => setSplitPosition(35)}
+                    onRunQuick={handleQuickRun}
+                    code={code}
+                    onCodeChange={handleEditorCodeChange}
+                    onParse={handleParse}
+                    onSimulate={handleSimulate}
+                    isSimulating={isSimulating}
+                    modelExists={!!model}
+                    model={model}
+                    validationWarnings={validationWarnings}
+                    editorMarkers={editorMarkers}
+                    loadedModelName={loadedModelName}
+                    onModelNameChange={setLoadedModelName}
+                    onModelIdChange={setLoadedModelId}
+                    selection={editorSelection}
+                    onImportSBML={handleImportSBML}
+                    onExportSBML={handleExportSBML}
+                    onExportSedML={handleExportSedML}
+                    onExportOMEX={handleExportOMEX}
+                    onExportBNGL={handleExportBNGL}
+                    onExportNET={handleExportNET}
+                  />
+                ) : (
+                  <DesignerPanel
+                    isCollapsed={splitPosition <= 5}
+                    onExpand={() => setSplitPosition(35)}
+                    text={designerText}
+                    onTextChange={setDesignerText}
+                    onCodeChange={handleEditorCodeChange}
+                    onParse={handleParse}
+                    onSimulate={(modelOverride) => handleSimulate({
+                      method: 'ode',
+                      t_end: 100,
+                      n_steps: 100,
+                      solver: 'auto'
+                    }, modelOverride)}
+                  />
+                )}
+              </div>
             </div>
-            <div className="flex min-w-0 flex-col">
+
+            {/* Splitter Handle */}
+            <div 
+              onMouseDown={handleMouseDown}
+              className="flex-shrink-0 w-2 group cursor-col-resize hidden lg:flex items-center justify-center relative touch-none hover:bg-teal-500/20 transition-colors"
+              title="Drag to resize panels"
+            >
+              <div className="w-0.5 h-16 bg-slate-300 dark:bg-slate-600 rounded-full group-hover:bg-teal-500 transition-colors" />
+              {/* Invisible touch target extension */}
+              <div className="absolute inset-y-0 -left-2 -right-2 z-10" />
+            </div>
+
+            {/* Right Panel: Visualization */}
+            <div 
+              className="flex min-w-0 flex-col min-h-0"
+              style={{ 
+                maxHeight: PANEL_MAX_HEIGHT,
+                minHeight: PANEL_MIN_HEIGHT,
+                flex: `1 1 ${100 - splitPosition}%`,
+                minWidth: '320px',
+                width: '100%', // Mobile default
+              }}
+            >
               <VisualizationPanel
                 model={model}
                 results={results}

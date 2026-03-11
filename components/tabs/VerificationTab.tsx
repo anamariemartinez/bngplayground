@@ -210,7 +210,7 @@ export const VerificationTab: React.FC<VerificationTabProps> = ({ model, results
                 <div className="flex-1 overflow-auto">
                     <table className="w-full border-collapse">
                         <thead>
-                            <tr className="bg-slate-100 dark:bg-slate-800">
+                            <tr className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800">
                                 <th className="p-2 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 border-b">Observable</th>
                                 <th className="p-2 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 border-b">Operator</th>
                                 <th className="p-2 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 border-b">Value</th>
@@ -223,7 +223,7 @@ export const VerificationTab: React.FC<VerificationTabProps> = ({ model, results
                             {constraints.map((constraint) => {
                                 const result = verificationResults.find(r => r.constraintId === constraint.id);
                                 return (
-                                    <tr key={constraint.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                    <tr key={constraint.id} className="border-b border-slate-200 dark:border-slate-700 dark:border-slate-700 hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-800/50">
                                         <td className="p-2">
                                             <Select
                                                 value={constraint.observable}
@@ -293,7 +293,7 @@ export const VerificationTab: React.FC<VerificationTabProps> = ({ model, results
 
             {/* Results Summary */}
             {verificationResults.length > 0 && (
-                <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700">
+                <div className="p-4 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700">
                     <h4 className="font-semibold text-sm mb-2">Verification Summary</h4>
                     <div className="flex gap-4 mb-3">
                         <span className="text-green-600 dark:text-green-400 text-sm">

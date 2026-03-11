@@ -288,7 +288,7 @@ export const FluxAnalysisTab: React.FC<FluxAnalysisTabProps> = ({ model, results
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700">
+                <tr className="border-b border-slate-200 dark:border-slate-700 dark:border-slate-700">
                   <th className="text-left py-2 px-3 font-medium text-slate-700 dark:text-slate-300">Reaction</th>
                   <th className="text-left py-2 px-3 font-medium text-slate-700 dark:text-slate-300">Reactants → Products</th>
                   <th className="text-right py-2 px-3 font-medium text-slate-700 dark:text-slate-300">Rate Constant</th>
@@ -299,7 +299,7 @@ export const FluxAnalysisTab: React.FC<FluxAnalysisTabProps> = ({ model, results
                 {topFluxes.map((f, i) => (
                   <tr
                     key={f.reactionName}
-                    className={`border-b border-slate-100 dark:border-slate-800 ${i % 2 === 0 ? 'bg-slate-50 dark:bg-slate-800/50' : ''}`}
+                    className={`border-b border-slate-100 dark:border-slate-800 ${i % 2 === 0 ? 'bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800/50' : ''}`}
                   >
                     <td className="py-2 px-3 font-mono text-slate-700 dark:text-slate-300">{f.reactionName}</td>
                     <td className="py-2 px-3 text-slate-600 dark:text-slate-400">

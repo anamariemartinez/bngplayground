@@ -17,6 +17,7 @@ import {
 import { BNGLModel, SimulationResults, SimulationOptions } from '../../types';
 import { bnglWorkerPool } from '../../services/BnglWorkerPool';
 import { CHART_COLORS } from '../../constants';
+import { formatValue } from '../../src/utils/formatValue';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 
@@ -152,7 +153,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
     return (
         <div className="h-full flex flex-col space-y-4">
             {/* Control Bar */}
-            <Card className="p-4 bg-slate-50 dark:bg-slate-900/50 border-dashed">
+            <Card className="p-4 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/50 border-dashed">
                 <div className="flex flex-wrap items-center gap-6">
                     <div className="flex items-center gap-3">
                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Ensemble Size</label>
@@ -161,7 +162,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                             value={ensembleSize}
                             onChange={(e) => setEnsembleSize(Math.max(1, parseInt(e.target.value) || 0))}
                             disabled={isSimulating}
-                            className="w-20 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-sm text-center"
+                            className="w-20 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-800 px-2 py-1 text-sm text-center"
                         />
                     </div>
 
@@ -171,7 +172,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                             value={method}
                             onChange={(e) => setMethod(e.target.value as 'ssa' | 'nf')}
                             disabled={isSimulating}
-                            className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            className="rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-800 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
                             <option value="ssa">Gillespie (SSA)</option>
                             <option value="nf">Network-Free (NFsim)</option>
@@ -214,7 +215,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
             </Card>
 
             {!runs.length && !isSimulating && (
-                <div className="flex-1 flex items-center justify-center p-12 text-center bg-slate-50 dark:bg-slate-900/10 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                <div className="flex-1 flex items-center justify-center p-12 text-center bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/10 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 dark:border-slate-700">
                     <div className="max-w-md space-y-4">
                         <div className="text-5xl opacity-40">🌊</div>
                         <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200">Trajectory Landscape</h3>
@@ -232,7 +233,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                     <Card className="p-6 flex flex-col min-h-[500px]">
                         <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-6 flex items-center gap-2">
                             🛰️ Trajectory Clusters (UMAP)
-                            <span className="font-normal text-xs text-slate-500 ml-auto">Each point is one simulation run</span>
+                            <span className="font-normal text-xs text-slate-500 dark:text-slate-400 ml-auto">Each point is one simulation run</span>
                         </h4>
                         <div className="flex-1 min-h-0">
                             <ResponsiveContainer width="100%" height="100%">
@@ -247,9 +248,9 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                                             if (active && payload && payload.length) {
                                                 const data = payload[0].payload;
                                                 return (
-                                                    <div className="bg-white dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700 rounded shadow-lg text-sm">
+                                                    <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 p-2 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded shadow-lg text-sm">
                                                         <div className="font-bold text-indigo-500">Run #{data.id}</div>
-                                                        <div className="text-xs text-slate-500">Click to view trajectory</div>
+                                                        <div className="text-xs text-slate-500 dark:text-slate-400">Click to view trajectory</div>
                                                     </div>
                                                 );
                                             }
@@ -277,7 +278,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                                 </ScatterChart>
                             </ResponsiveContainer>
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-2 italic">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 italic">
                             Distance represents similarity in time-series dynamics across all observables.
                         </p>
                     </Card>
@@ -292,11 +293,12 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 40 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
-                                        <XAxis dataKey="time" label={{ value: 'Time', position: 'bottom', offset: 0 }} />
-                                        <YAxis scale="linear" width={40} />
+                                        <XAxis dataKey="time" tickFormatter={(v) => formatValue(v)} label={{ value: 'Time', position: 'bottom', offset: 0 }} />
+                                        <YAxis scale="linear" width={40} tickFormatter={(v) => formatValue(v)} />
                                         <Tooltip
-                                            contentStyle={{ fontSize: 12, backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff' }}
+                                            contentStyle={{ fontSize: 12, backgroundColor: '#1e293b', borderColor: '#334155', color: '#fff', borderRadius: '8px' }}
                                             itemStyle={{ padding: '0 4px' }}
+                                            formatter={(v: any) => [formatValue(v), '']}
                                         />
                                         <Legend
                                             onClick={toggleObservable}

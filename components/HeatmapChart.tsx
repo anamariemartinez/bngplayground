@@ -26,7 +26,7 @@ export const HeatmapChart: React.FC<HeatmapChartProps> = ({
   cellSize,
 }) => {
   if (!data || data.length === 0) {
-    return <div className="text-sm text-slate-500">No data to render</div>;
+    return <div className="text-sm text-slate-500 dark:text-slate-400">No data to render</div>;
   }
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -245,7 +245,7 @@ export const HeatmapChart: React.FC<HeatmapChartProps> = ({
 
       {tooltip && (
         <div
-          className="absolute z-10 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 shadow-sm"
+          className="absolute z-10 rounded border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-900 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 shadow-sm"
           style={{ left: tooltip.left, top: tooltip.top, maxWidth: 320 }}
         >
           <div className="font-semibold text-slate-900 dark:text-slate-100">

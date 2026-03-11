@@ -32,7 +32,7 @@ export const RuleChangeBadges: React.FC<RuleChangeBadgesProps> = ({ summary, siz
             : 'Rule is irreversible (->)'
         }
       >
-        <span className={`${badgeBase} bg-slate-100 text-slate-700 border-slate-200 ${sizeClasses[size]}`}>
+        <span className={`${badgeBase} bg-slate-100 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 ${sizeClasses[size]}`}>
           {summary.reversibility === 'reversible' ? '↔ reversible' : '→ irreversible'}
         </span>
       </Tooltip>
@@ -146,7 +146,7 @@ const kindBadgeClass = (kind: RuleKind): string => {
       return 'bg-indigo-50 text-indigo-800 border-indigo-200';
     case 'mixed':
     default:
-      return 'bg-slate-50 text-slate-700 border-slate-200';
+      return 'bg-slate-50 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
   }
 };
 
@@ -187,5 +187,5 @@ const complexBadgeClass = (change: ComplexChangeType): string => {
   if (change.startsWith('dissoc')) {
     return 'bg-rose-50 text-rose-800 border-rose-200';
   }
-  return 'bg-slate-50 text-slate-700 border-slate-200';
+  return 'bg-slate-50 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
 };

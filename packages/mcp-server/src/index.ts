@@ -33,6 +33,14 @@ import { handleValidateModel } from './handlers/validateModel.js';
 import { handleGetContactMap } from './handlers/getContactMap.js';
 import { handleFitParameters } from './handlers/fitParameters.js';
 import { handleDiagnose } from './handlers/diagnose.js';
+import { handleSobolSensitivity } from './handlers/sobolSensitivity.js';
+import { handleComputeFim } from './handlers/computeFim.js';
+import { handleIdentifiability } from './handlers/identifiability.js';
+import { handleBayesianInference } from './handlers/bayesianInference.js';
+import { handleExportSedml } from './handlers/exportSedml.js';
+import { handleExportOmex } from './handlers/exportOmex.js';
+import { handleExportSbml } from './handlers/exportSbml.js';
+import { handleSuggestAnnotations } from './handlers/suggestAnnotations.js';
 
 const server = new Server(
   {
@@ -251,6 +259,128 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['code'],
         },
       },
+      {
+        name: 'sobol_sensitivity',
+        description: 'Run Sobol global sensitivity analysis on a BNGL model. Returns first-order and total-order indices with bootstrap confidence intervals.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            parameters: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, min: { type: 'number' }, max: { type: 'number' } }, required: ['name', 'min', 'max'] }, description: 'Parameters to analyze with bounds' },
+            observables: { type: 'array', items: { type: 'string' }, description: 'Observables to analyze (default: all)' },
+            n_samples: { type: 'number', description: 'Saltelli base samples (default: 512)' },
+            n_bootstrap: { type: 'number', description: 'Bootstrap replicates (default: 500)' },
+            log_scale: { type: 'boolean', description: 'Use log-uniform sampling' },
+            seed: { type: 'number', description: 'Random seed' },
+            method: { type: 'string', enum: [...simulationMethods] },
+            t_end: { type: 'number' },
+            n_steps: { type: 'number' },
+          },
+          required: ['code', 'parameters'],
+        },
+      },
+      {
+        name: 'compute_fim',
+        description: 'Compute the Fisher Information Matrix for parameter identifiability analysis. Returns eigenvalues, VIF, correlations, and optional collinearity index.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            parameters: { type: 'array', items: { type: 'string' }, description: 'Parameter names (default: all)' },
+            compute_collinearity: { type: 'boolean', description: 'Compute collinearity index' },
+            method: { type: 'string', enum: [...simulationMethods] },
+            t_end: { type: 'number' },
+            n_steps: { type: 'number' },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'identifiability_analysis',
+        description: 'Run profile likelihood analysis to classify parameters as identifiable, practically or structurally unidentifiable.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            parameters: { type: 'array', items: { type: 'string' }, description: 'Parameters to profile' },
+            data: { type: 'array', items: { type: 'object', properties: { time: { type: 'number' }, observables: { type: 'object' } } }, description: 'Experimental data' },
+            n_grid: { type: 'number' },
+            range_factor: { type: 'number' },
+            alpha: { type: 'number' },
+          },
+          required: ['code', 'data'],
+        },
+      },
+      {
+        name: 'bayesian_inference',
+        description: 'Run ABC-SMC Bayesian inference to estimate posterior distributions of model parameters given experimental data.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            priors: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, distribution: { type: 'string', enum: ['uniform', 'log-uniform', 'normal'] }, min: { type: 'number' }, max: { type: 'number' }, mean: { type: 'number' }, std: { type: 'number' } } }, description: 'Prior distribution specs' },
+            data: { type: 'array', items: { type: 'object', properties: { time: { type: 'number' }, observables: { type: 'object' } } }, description: 'Experimental data' },
+            observables: { type: 'array', items: { type: 'string' } },
+            n_particles: { type: 'number' },
+            n_populations: { type: 'number' },
+            seed: { type: 'number' },
+          },
+          required: ['code', 'priors', 'data'],
+        },
+      },
+      {
+        name: 'export_sedml',
+        description: 'Export a BNGL model as SED-ML L1V4 XML describing the simulation experiment.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            method: { type: 'string', enum: ['ode', 'ssa', 'nf'] },
+            t_end: { type: 'number' },
+            n_steps: { type: 'number' },
+            observables: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'export_omex',
+        description: 'Export a BNGL model as a COMBINE/OMEX archive (ZIP) containing model, SED-ML, and optional Dublin Core metadata.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            model_name: { type: 'string' },
+            method: { type: 'string', enum: ['ode', 'ssa', 'nf'] },
+            metadata: { type: 'object', properties: { title: { type: 'string' }, creators: { type: 'array', items: { type: 'string' } }, description: { type: 'string' } } },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'export_sbml',
+        description: 'Export a BNGL model as BNGL-XML (closest to SBML available without atomizer).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            annotate: { type: 'boolean', description: 'Include SBO/MIRIAM annotations' },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'suggest_annotations',
+        description: 'Analyze model molecules and suggest MIRIAM/UniProt identifiers via external database lookup.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            organism: { type: 'string', description: 'Target organism (default: Homo sapiens)' },
+          },
+          required: ['code'],
+        },
+      },
     ],
   };
 });
@@ -274,6 +404,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       return handleFitParameters(args);
     case 'diagnose':
       return handleDiagnose(args);
+    case 'sobol_sensitivity':
+      return handleSobolSensitivity(args);
+    case 'compute_fim':
+      return handleComputeFim(args);
+    case 'identifiability_analysis':
+      return handleIdentifiability(args);
+    case 'bayesian_inference':
+      return handleBayesianInference(args);
+    case 'export_sedml':
+      return handleExportSedml(args);
+    case 'export_omex':
+      return handleExportOmex(args);
+    case 'export_sbml':
+      return handleExportSbml(args);
+    case 'suggest_annotations':
+      return handleSuggestAnnotations(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

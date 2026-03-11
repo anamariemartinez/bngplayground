@@ -44,7 +44,7 @@ export const RegulatoryTab: React.FC<RegulatoryTabProps> = ({ model, selectedRul
       {arGraph.nodes.length > 0 ? (
         <ARGraphViewer arGraph={arGraph} selectedRuleId={selectedRuleId} onSelectRule={onSelectRule} forceFitTrigger={forceFitTrigger} />
       ) : (
-        <div className="flex h-full items-center justify-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg min-h-[500px]">
+        <div className="flex h-full items-center justify-center text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-lg min-h-[500px]">
           No graph nodes generated. Check if rules are parsed correctly.
         </div>
       )}

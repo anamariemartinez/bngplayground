@@ -6,10 +6,13 @@ import { Input } from '../ui/Input';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { Card } from '../ui/Card';
 import { DataTable } from '../ui/DataTable';
+import { EmptyState } from '../ui/EmptyState';
+import { StatusMessage } from '../ui/StatusMessage';
 import { CHART_COLORS } from '../../constants';
 import { parseExperimentalData, ExperimentalDataPoint } from '../../src/services/data/experimentalData';
 import { fitParameters, FitAlgorithm } from '../../services/optimization/paramFitter';
 import { bnglService } from '../../services/bnglService';
+import { formatValue } from '../../src/utils/formatValue';
 
 interface ParameterEstimationTabProps {
   model: BNGLModel | null;
@@ -22,8 +25,6 @@ interface ParameterPrior {
   min: number;
   max: number;
 }
-
-
 
 interface EstimationResult {
   parameters: string[];
@@ -45,18 +46,9 @@ interface EstimationResult {
   algorithm?: string;
 }
 
-const EXAMPLE_DATA = `# Example experimental data format:
-# time, Observable1, Observable2
-0, 100, 0
-10, 75, 25
-20, 55, 45
-30, 42, 58
-50, 28, 72
-100, 15, 85`;
-
 // Default data for testing - uses typical BNGL observable names
 const DEFAULT_TEST_DATA = `# Default test data (A → B reaction)
-# time, A, B
+time, A, B
 0, 100, 0
 5, 82, 18
 10, 67, 33
@@ -102,6 +94,10 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
       setResult(null);
       return;
     }
+
+    setResult(null);
+    setError(null);
+    setProgress({ current: 0, total: 0, elbo: 0 });
 
     // Select first few parameters by default
     const defaultSelected = parameterNames.slice(0, Math.min(3, parameterNames.length));
@@ -174,15 +170,18 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
     ));
   };
 
-  const canRun = selectedParams.length > 0 && parsedData.length > 0 && !isRunning;
 
-  const formatNumber = (value: unknown): string => {
-    const n = typeof value === 'number' ? value : Number.NaN;
-    if (!Number.isFinite(n)) return '—';
-    const abs = Math.abs(n);
-    if (abs !== 0 && (abs < 1e-3 || abs >= 1e4)) return n.toExponential(4);
-    return n.toPrecision(6);
-  };
+
+  const dataObsNames = useMemo(() => {
+    if (parsedData.length === 0) return [];
+    return Object.keys(parsedData[0].values);
+  }, [parsedData]);
+
+  const sharedObsNames = useMemo(() => {
+    return dataObsNames.filter(name => observableNames.includes(name));
+  }, [dataObsNames, observableNames]);
+
+  const canRun = selectedParams.length > 0 && parsedData.length > 0 && sharedObsNames.length > 0 && !isRunning;
 
   const handleRunEstimation = async () => {
     if (!canRun || !model) return;
@@ -234,12 +233,6 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
         const posteriorStd = credibleIntervals.map(ci =>
           (ci.upper - ci.lower) / 2
         );
-        // Derive percentile-like ranges from CI for the boxplot.
-        const percentiles = credibleIntervals.map(ci => ({
-          q1:     fitResult.params[0] + (ci.lower - fitResult.params[0]) * 0.5,
-          median: fitResult.params[0],
-          q3:     fitResult.params[0] + (ci.upper - fitResult.params[0]) * 0.5,
-        }));
         const percentilesPerParam = fitResult.params.map((v, i) => ({
           q1:     v - posteriorStd[i] * 0.675,
           median: v,
@@ -300,24 +293,26 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
       const mean  = result.posteriorMean[i] ?? 0;
       const lower = result.credibleIntervals[i]?.lower ?? mean;
       const upper = result.credibleIntervals[i]?.upper ?? mean;
-      // For log-scale bar chart, bars must be positive
       const safeMean = Math.max(mean, 1e-15);
+      const safeLower = Math.max(lower, 1e-15);
+      const safeUpper = Math.max(upper, 1e-15);
+      
       return {
         name,
         mean: safeMean,
+        lower: safeLower,
+        upper: safeUpper,
+        // Range for floating bar [min, max]
+        range: [safeLower, safeUpper],
         prior: Math.max(result.priorMeans[i] ?? safeMean, 1e-15),
-        // Recharts ErrorBar asymmetric format: { plus, minus }
-        ciError: {
-          plus:  Math.max(0, upper - mean),
-          minus: Math.max(0, mean - Math.max(lower, 1e-15)),
-        },
+        ciHalfWidth: result.posteriorStd[i] ?? 0,
       };
     });
   }, [result]);
 
   const elboChartData = useMemo(() => {
     if (!result?.elbo) return [];
-    return result.elbo.map((value, i) => ({ iteration: i, elbo: value }));
+    return result.elbo.map((value, i) => ({ iteration: i, elbo: Math.max(value, 1e-15) }));
   }, [result]);
 
   const fitComparisonData = useMemo(() => {
@@ -325,11 +320,9 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
 
     return parsedData.map((d, i) => {
       const entry: any = { time: d.time };
-      // Add experimental values
       for (const [obsName, expVal] of Object.entries(d.values)) {
         entry[`${obsName}_exp`] = expVal;
       }
-      // Add predicted values
       for (const [obsName, predData] of result.bestPredictions!) {
         entry[`${obsName}_pred`] = predData[i] ?? 0;
       }
@@ -337,514 +330,546 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
     });
   }, [result, parsedData]);
 
-  const guardMessage = !model
-    ? 'Parse a model to set up parameter estimation.'
-    : parameterNames.length === 0
-      ? 'The current model does not declare any parameters to estimate.'
-      : null;
+  if (!model) {
+    return <EmptyState title="No Model Loaded" description="Parse a model to perform parameter estimation." />;
+  }
 
   return (
-    <div className="space-y-6">
-      {guardMessage ? (
-        <div className="text-slate-500 dark:text-slate-400">{guardMessage}</div>
-      ) : (
-        <>
-          {/* Parameter Selection Card */}
-          <Card className="space-y-4">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-              Select Parameters to Estimate
-            </h3>
+    <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">
+      {/* Sidebar - Configuration */}
+      <div className="lg:w-80 flex-shrink-0 space-y-4 overflow-y-auto pr-2">
+        <Card className="p-4 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+            1. Select Parameters
+          </h3>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {parameterNames.map(name => (
+              <label key={name} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-800 p-1 rounded transition-colors text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={selectedParams.includes(name)}
+                  onChange={() => handleParamToggle(name)}
+                  className="rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500"
+                />
+                <span className="truncate flex-1 font-mono text-xs" title={name}>{name}</span>
+                <span className="text-[10px] bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 px-1 rounded">
+                  {formatValue(model.parameters[name])}
+                </span>
+              </label>
+            ))}
+          </div>
+          {selectedParams.length === 0 && (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+              ⚠️ At least one parameter must be selected.
+            </p>
+          )}
+        </Card>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto">
-              {parameterNames.map(name => (
-                <label key={name} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedParams.includes(name)}
-                    onChange={() => handleParamToggle(name)}
-                    className="rounded border-slate-300 text-primary focus:ring-primary"
-                  />
-                  <span className="truncate" title={name}>{name}</span>
-                  <span className="text-xs text-slate-500">
-                    ({model?.parameters[name]?.toFixed(4) ?? 'N/A'})
-                  </span>
-                </label>
+        {selectedParams.length > 0 && (
+          <Card className="p-4 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+              2. Prior Distributions
+            </h3>
+            <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
+              {priors.map(prior => (
+                <div key={prior.name} className="space-y-2 p-2 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 rounded-md border border-slate-100 dark:border-slate-700">
+                  <div className="text-xs font-bold font-mono text-teal-700 dark:text-teal-400 truncate" title={prior.name}>
+                    {prior.name}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Mean</label>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={prior.mean}
+                        onChange={e => updatePrior(prior.name, 'mean', parseFloat(e.target.value) || 0)}
+                        className="h-7 text-xs px-1.5"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Std</label>
+                      <Input
+                        type="number"
+                        step="any"
+                        min={0}
+                        value={prior.std}
+                        onChange={e => updatePrior(prior.name, 'std', parseFloat(e.target.value) || 0.1)}
+                        className="h-7 text-xs px-1.5"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Min</label>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={prior.min}
+                        onChange={e => updatePrior(prior.name, 'min', parseFloat(e.target.value) || 0)}
+                        className="h-7 text-xs px-1.5"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase">Max</label>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={prior.max}
+                        onChange={e => updatePrior(prior.name, 'max', parseFloat(e.target.value) || 10)}
+                        className="h-7 text-xs px-1.5"
+                      />
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
-
-            <div className="text-sm text-slate-500">
-              Selected: {selectedParams.length} parameter{selectedParams.length !== 1 ? 's' : ''}
-            </div>
           </Card>
+        )}
 
-          {/* Prior Specification Card */}
-          {selectedParams.length > 0 && (
-            <Card className="space-y-4">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                Prior Distributions
-              </h3>
-
-              <div className="space-y-3">
-                <div className="grid grid-cols-5 gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 px-1">
-                  <span>Parameter</span>
-                  <span>Prior Mean</span>
-                  <span>Prior Std</span>
-                  <span>Min Bound</span>
-                  <span>Max Bound</span>
-                </div>
-
-                {priors.map(prior => (
-                  <div key={prior.name} className="grid grid-cols-5 gap-2 items-center">
-                    <span className="text-sm font-medium truncate" title={prior.name}>{prior.name}</span>
-                    <Input
-                      type="number"
-                      step="any"
-                      value={prior.mean}
-                      onChange={e => updatePrior(prior.name, 'mean', parseFloat(e.target.value) || 0)}
-                      className="text-sm"
-                    />
-                    <Input
-                      type="number"
-                      step="any"
-                      min={0}
-                      value={prior.std}
-                      onChange={e => updatePrior(prior.name, 'std', parseFloat(e.target.value) || 0.1)}
-                      className="text-sm"
-                    />
-                    <Input
-                      type="number"
-                      step="any"
-                      value={prior.min}
-                      onChange={e => updatePrior(prior.name, 'min', parseFloat(e.target.value) || 0)}
-                      className="text-sm"
-                    />
-                    <Input
-                      type="number"
-                      step="any"
-                      value={prior.max}
-                      onChange={e => updatePrior(prior.name, 'max', parseFloat(e.target.value) || 10)}
-                      className="text-sm"
-                    />
-                  </div>
-                ))}
-              </div>
-            </Card>
+        <Card className="p-4 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+            3. Estimation Settings
+          </h3>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Algorithm</label>
+              <select 
+                value={algorithm} 
+                onChange={e => setAlgorithm(e.target.value as FitAlgorithm)}
+                className="w-full h-8 text-xs bg-white dark:bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md px-2 focus:ring-2 focus:ring-teal-500 outline-none"
+              >
+                <option value="nelder-mead">Nelder-Mead (Local)</option>
+                <option value="sbplx">Subplex (Robust Local)</option>
+                <option value="bobyqa">BOBYQA (Derivative-free)</option>
+                <option value="projected-nm">Projected NM (Bounded)</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">Max Iterations</label>
+              <Input
+                type="number"
+                min={50}
+                max={5000}
+                value={nIterations}
+                onChange={e => setNIterations(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+          
+          <Button 
+            className="w-full mt-4" 
+            variant="primary"
+            onClick={handleRunEstimation}
+            disabled={!canRun}
+          >
+            {isRunning ? 'Running Estimation...' : 'Run Estimation'}
+          </Button>
+          {!isRunning && parsedData.length > 0 && sharedObsNames.length === 0 && (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium">
+              ⚠️ Cannot run: The experimental data has no observables that match the current model. Check the column names!
+            </p>
           )}
 
-          {/* Experimental Data Card */}
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                Experimental Data
+          {isRunning && (
+            <Button variant="danger" onClick={handleCancel} className="w-full border-red-200 text-red-700 bg-red-50 hover:bg-red-100 h-8 text-xs">
+              Cancel
+            </Button>
+          )}
+        </Card>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 space-y-6 overflow-y-auto">
+        {/* Experimental Data Editor - show when not results or as collapsible */}
+        {(!result || isRunning) && (
+          <Card className="p-4 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Experimental Data Editor
               </h3>
               <div className="flex gap-2">
-                <Button
-                  variant="subtle"
-                  onClick={() => setDataInput(DEFAULT_TEST_DATA)}
+                <Button 
+                  variant="subtle" 
+                  className="h-6 px-2 text-[10px]" 
+                  onClick={async () => {
+                    if (!model) return;
+                    try {
+                      // Run a quick deterministic simulation to generate synthetic data
+                      const modelId = await bnglService.prepareModel(model);
+                      const res = await bnglService.simulateCached(modelId, {}, {
+                        method: 'ode',
+                        t_end: model.simulationOptions.t_end || 10,
+                        n_steps: model.simulationOptions.n_steps || 100,
+                      });
+                      
+                      const obsNames = model.observables.map(o => o.name);
+                      let csv = `time, ${obsNames.join(', ')}\n`;
+                      
+                      // We want 10 points
+                      const totalPoints = res.data.length;
+                      const step = Math.max(1, Math.floor((totalPoints - 1) / 9));
+                      
+                      const selectedIndices = [];
+                      for (let i = 0; i < totalPoints; i += step) selectedIndices.push(i);
+                      // Ensure the last point is always included if we didn't perfectly hit it
+                      if (selectedIndices[selectedIndices.length - 1] !== totalPoints - 1) {
+                         if (selectedIndices.length >= 10) selectedIndices[selectedIndices.length - 1] = totalPoints - 1;
+                         else selectedIndices.push(totalPoints - 1);
+                      }
+                      
+                      for (const idx of selectedIndices) {
+                        const row = res.data[idx];
+                        const rowVals = [row.time.toFixed(4)];
+                        for (const name of obsNames) {
+                           const exact = row[name] ?? 0;
+                           // +/- 2.5% random noise
+                           const noisy = exact * (1 + (Math.random() - 0.5) * 0.05);
+                           rowVals.push(noisy.toFixed(4));
+                        }
+                        csv += rowVals.join(', ') + '\n';
+                      }
+                      
+                      setDataInput(csv);
+                    } catch (e) {
+                      console.error("Auto-generate failed", e);
+                      setDataInput(DEFAULT_TEST_DATA); // fallback
+                    }
+                  }}
                 >
-                  Load A→B Data
+                  Auto-Generate
                 </Button>
-                <Button
-                  variant="subtle"
-                  onClick={() => setDataInput(EXAMPLE_DATA)}
-                >
-                  Load Generic Example
-                </Button>
-                <Button
-                  variant="subtle"
-                  onClick={() => setDataInput('')}
-                >
-                  Clear
-                </Button>
+                <Button variant="subtle" className="h-6 px-2 text-[10px]" onClick={() => setDataInput('')}>Clear</Button>
               </div>
             </div>
-
-            <div className="text-sm text-slate-600 dark:text-slate-400">
-              Enter time-course data in CSV format. First column should be time, subsequent columns are observables.
-              <br />
-              Model observables: {observableNames.join(', ') || 'None defined'}
-            </div>
-
             <textarea
               value={dataInput}
               onChange={e => setDataInput(e.target.value)}
-              placeholder={EXAMPLE_DATA}
-              className="w-full h-40 p-3 font-mono text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none"
+              className="w-full h-32 p-3 font-mono text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-teal-500 outline-none resize-none"
               spellCheck={false}
+              placeholder="# time, Obs1, Obs2..."
             />
-
-            {dataError && (
-              <div className="text-sm text-red-600 dark:text-red-400">{dataError}</div>
-            )}
-
-            {parsedData.length > 0 && (
-              <div className="text-sm text-green-600 dark:text-green-400">
-                ✓ Parsed {parsedData.length} data points with {Object.keys(parsedData[0]?.values || {}).length} observables
-              </div>
-            )}
-          </Card>
-
-          {/* Estimation Settings Card */}
-          <Card className="space-y-4">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-              Estimation Settings
-            </h3>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Max Evaluations
-                </label>
-                <Input
-                  type="number"
-                  min={50}
-                  max={5000}
-                  value={nIterations}
-                  onChange={e => setNIterations(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Algorithm
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  {(['nelder-mead', 'sbplx', 'projected-nm', 'bobyqa'] as FitAlgorithm[]).map(alg => (
-                    <Button
-                      key={alg}
-                      variant={algorithm === alg ? 'primary' : 'subtle'}
-                      className="text-xs h-7 px-3"
-                      onClick={() => setAlgorithm(alg)}
-                    >
-                      {alg === 'bobyqa' ? 'bobyqa (uses sbplx)' : alg === 'projected-nm' ? 'projected-nm' : alg}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              {isRunning && (
-                <Button variant="danger" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              )}
-              <Button onClick={handleRunEstimation} disabled={!canRun}>
-                {isRunning ? 'Estimating...' : 'Run Estimation'}
-              </Button>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-slate-500 dark:text-slate-400">Observables: {observableNames.join(', ')}</span>
+              {dataError ? (
+                <span className="text-red-500 font-bold">{dataError}</span>
+              ) : parsedData.length > 0 ? (
+                <span className={`font-bold ${sharedObsNames.length > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
+                  {sharedObsNames.length > 0 ? `✓ ${parsedData.length} TP | ${sharedObsNames.length} Matching Obs` : `⚠️ No matching observables!`}
+                </span>
+              ) : <span className="text-slate-400">No data parsed</span>}
             </div>
           </Card>
+        )}
 
-          {/* Progress */}
-          {isRunning && (
-            <div className="w-full">
-              <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
-                <LoadingSpinner className="w-5 h-5" />
-                <span>Optimizing parameters ({algorithm})... eval {progress.current} / {progress.total}</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-2.5 dark:bg-slate-700 mt-3">
-                <div
-                  className="bg-primary h-2.5 rounded-full transition-all duration-300"
-                  style={{ width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }}
-                />
+        {!result && !isRunning && !error && (
+          <EmptyState 
+            title="Ready to Estimate" 
+            description="Select parameters and priors, then upload experimental data to begin the inference process."
+          />
+        )}
+
+        {/* Progress & Error */}
+        {isRunning && (
+          <Card className="p-6">
+            <div className="space-y-4 text-center">
+              <LoadingSpinner className="mx-auto w-12 h-12 text-teal-600" />
+              <div className="space-y-2">
+                <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Executing Global Optimization
+                </h4>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Fitting model {model.name || 'current'} to experimental data using {algorithm}...
+                </p>
+                <div className="flex items-center justify-between text-xs font-mono px-4 pt-2">
+                  <span>Eval {progress.current} / {progress.total}</span>
+                  <span>SSE: {formatValue(progress.elbo)}</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-800/50 rounded-full h-3 relative overflow-hidden">
+                  <div 
+                    className="absolute inset-y-0 left-0 bg-teal-500 transition-all duration-300 shadow-[0_0_8px_rgba(20,184,166,0.5)]" 
+                    style={{ width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }}
+                  />
+                </div>
               </div>
             </div>
-          )}
+          </Card>
+        )}
 
-          {/* Error Display */}
-          {error && (
-            <div className="border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/30 text-red-700 dark:text-red-200 px-4 py-3 rounded-md">
-              {error}
-            </div>
-          )}
+        {error && <StatusMessage status={{ type: 'error', message: error }} onClose={() => setError(null)} />}
 
-          {/* Results */}
-          {result && (
-            <>
-              {/* Summary Card */}
-              <Card className="p-4 border-l-4 border-l-blue-500">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex flex-col">
-                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Estimation Results</h3>
-                    <p className="text-sm text-slate-500">Completed {result.iterations} iterations</p>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-md border border-blue-100 dark:border-blue-800 text-center min-w-[100px]">
-                      <div className="text-[10px] uppercase font-bold text-blue-500 dark:text-blue-400">RMSE</div>
-                      <div className="text-xl font-mono font-bold text-blue-700 dark:text-blue-300">{result.rmse.toExponential(3)}</div>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-800 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 text-center min-w-[100px]">
-                      <div className="text-[10px] uppercase font-bold text-slate-500">SSE</div>
-                      <div className="text-xl font-mono font-bold text-slate-700 dark:text-slate-300">{result.sse.toExponential(3)}</div>
-                    </div>
-                    <div className="bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 rounded-md border border-emerald-100 dark:border-emerald-800 text-center min-w-[100px]">
-                      <div className="text-[10px] uppercase font-bold text-emerald-500 dark:text-emerald-400">R² Score</div>
-                      <div className="text-xl font-mono font-bold text-emerald-700 dark:text-emerald-300">{result.rSquared.toFixed(4)}</div>
-                    </div>
-                  </div>
+        {result && (
+          <div className="space-y-6">
+            {/* Summary Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="p-4 border-l-4 border-teal-500 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-2 opacity-10">
+                  <div className="w-12 h-12 rounded-full border-4 border-teal-500" />
                 </div>
-
-                <div className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-md p-3 space-y-1">
-                  <div className="font-medium text-slate-700 dark:text-slate-200">What this means</div>
-                  <div>
-                    <span className="font-medium">Best estimate / CI half-width</span>: optimized parameter value and approximate 95% confidence interval half-width from finite-difference Hessian.
-                  </div>
-                  <div>
-                    <span className="font-medium">95% credible interval</span>: range that contains ~95% of the posterior probability (Bayesian uncertainty interval).
-                  </div>
-                  <div>
-                    <span className="font-medium">SSE history</span>: sum-of-squared-errors at each function evaluation. Should decrease and then plateau when the optimizer converges. "May not have converged" means the maximum evaluations was reached before the tolerance was met.
-                  </div>
+                <h4 className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Root Mean Square Error</h4>
+                <div className="text-2xl font-mono font-bold text-slate-900 dark:text-slate-100 mt-1">
+                  {formatValue(result.rmse)}
                 </div>
-
-                <DataTable
-                  headers={['Parameter', 'Best Estimate', 'CI Half-Width (±)', '95% CI Lower', '95% CI Upper', 'Initial Value']}
-                  rows={result.parameters.map((name, i) => [
-                    name,
-                    formatNumber(result.posteriorMean[i]),
-                    formatNumber(result.posteriorStd[i]),
-                    formatNumber(result.credibleIntervals[i]?.lower),
-                    formatNumber(result.credibleIntervals[i]?.upper),
-                    formatNumber(result.priorMeans[i])
-                  ])}
-                />
+                <div className="text-[10px] text-teal-600 font-medium mt-1">Lower is better</div>
               </Card>
+              <Card className="p-4 border-l-4 border-sky-500">
+                <h4 className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Pearson R² Score</h4>
+                <div className="text-2xl font-mono font-bold text-slate-900 dark:text-slate-100 mt-1">
+                  {result.rSquared.toFixed(4)}
+                </div>
+                <div className="text-[10px] text-sky-600 font-medium mt-1">Target: high (near 1.0)</div>
+              </Card>
+              <Card className="p-4 border-l-4 border-indigo-500">
+                <h4 className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Total Iterations</h4>
+                <div className="text-2xl font-mono font-bold text-slate-900 dark:text-slate-100 mt-1">
+                  {result.iterations}
+                </div>
+                <div className="text-[10px] text-indigo-600 font-medium mt-1">using {result.algorithm}</div>
+              </Card>
+            </div>
 
-              {/* Posterior Visualization */}
-              <Card className="space-y-4">
-                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                  Posterior Estimates (Best Estimate ± 95% CI)
+            {/* Results Table */}
+            <Card className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                  Optimizer State / Parameter Statistics
                 </h3>
-                <div className="text-xs text-slate-500">
-                  Blue bars: optimized value. Error bars: 95% confidence interval from finite-difference Hessian.
-                  Gray triangles: initial (prior) value.
-                </div>
+              </div>
+              <DataTable
+                headers={['Parameter', 'Best Estimate', '95% CI Half-Width (+/-)', 'Initial (Prior)']}
+                rows={result.parameters.map((p, i) => [
+                  <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400" key={p}>{p}</span>,
+                  <span className="font-mono text-xs" key={p}>{formatValue(result.posteriorMean[i])}</span>,
+                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400" key={p}>{formatValue(result.posteriorStd[i])}</span>,
+                  <span className="font-mono text-xs text-slate-400" key={p}>{formatValue(result.priorMeans[i])}</span>,
+                ])}
+              />
+            </Card>
 
-                <ResponsiveContainer width="100%" height={Math.max(250, posteriorChartData.length * 60 + 80)}>
-                  <BarChart
-                    data={posteriorChartData}
+            {/* Confidence Intervals Plot */}
+            <Card className="p-4 space-y-4">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                Posterior Estimates Map (Hessian-based 95% CI)
+              </h3>
+              <div className="h-[320px] w-full">
+                <ResponsiveContainer>
+                  <ComposedChart 
+                    data={posteriorChartData} 
                     layout="vertical"
-                    margin={{ top: 10, right: 60, left: 80, bottom: 10 }}
+                    margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.15)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      scale="log"
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(128,128,128,0.1)" />
+                    <XAxis 
+                      type="number" 
+                      scale="log" 
                       domain={['auto', 'auto']}
-                      tickFormatter={(v: number) => v.toExponential(1)}
-                      tick={{ fontSize: 10, fill: '#334155' }}
-                      tickLine={{ stroke: '#334155' }}
-                      axisLine={{ stroke: '#334155' }}
-                      label={{ value: 'Estimated Value (log scale)', position: 'insideBottom', offset: -5, fill: '#334155', fontSize: 12 }}
+                      tickFormatter={(v) => formatValue(v)}
+                      tick={{ fontSize: 10 }}
+                      label={{ value: 'Parameter Value (log scale)', position: 'bottom', offset: 0, fontSize: 11, fontWeight: 'bold' }}
                     />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={75}
-                      tick={{ fontSize: 11, fill: '#1e293b' }}
-                      tickLine={{ stroke: '#1e293b' }}
-                      axisLine={{ stroke: '#1e293b' }}
+                    <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                    <Tooltip 
+                      formatter={(v: any, name: string) => {
+                        // Filter out 'name' keys and other internal Recharts properties that might leak into tooltip
+                        if (name === 'name' || name === 'Parameter' || name === 'range') return null;
+                        
+                        if (Array.isArray(v)) {
+                          return [`${formatValue(v[0])} - ${formatValue(v[1])}`, '95% CI'];
+                        }
+                        return [formatValue(v), name];
+                      }}
+                      contentStyle={{ 
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+                        borderRadius: '8px', 
+                        border: 'none', 
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                        fontSize: '12px',
+                        padding: '10px'
+                      }}
                     />
-                    <Tooltip
-                      formatter={(value: number, name: string) => [
-                        formatNumber(value),
-                        name === 'mean' ? 'Best Estimate' : name === 'prior' ? 'Initial Value' : name,
-                      ]}
+                    {/* Legend matches the components below */}
+                    <Legend verticalAlign="top" height={36} />
+                    
+                    {/* The "Region" - floating bar from lower to upper */}
+                    <Bar dataKey="range" fill="#0d9488" fillOpacity={0.15} radius={[2, 2, 2, 2]} name="95% Confidence Region" />
+                    
+                    {/* Prior Mean - placed behind Best Fit, diamond shape */}
+                    <Scatter 
+                      dataKey="prior" 
+                      fill="#94a3b8" 
+                      name="Prior Mean" 
+                      shape={(props: any) => {
+                        const { cx, cy, fill, stroke, strokeWidth } = props;
+                        const size = 6; // Half-width
+                        return (
+                          <path 
+                            d={`M${cx},${cy-size} L${cx+size},${cy} L${cx},${cy+size} L${cx-size},${cy} Z`} 
+                            fill={fill} 
+                            stroke={stroke} 
+                            strokeWidth={strokeWidth} 
+                          />
+                        );
+                      }}
+                      stroke="#fff" 
+                      strokeWidth={1} 
                     />
-                    <Legend />
-                    {/* Prior value as a secondary bar */}
-                    <Bar dataKey="prior" fill="#cbd5e1" barSize={8} name="Initial Value" />
-                    {/* Best estimate with asymmetric CI error bars */}
-                    <Bar dataKey="mean" fill="#3b82f6" barSize={18} name="Best Estimate">
-                      <ErrorBar
-                        dataKey="ciError"
-                        width={6}
-                        strokeWidth={2}
-                        stroke="#1e3a5f"
-                      />
-                    </Bar>
-                  </BarChart>
+                    
+                    {/* Best Fit Estimate - primary point, circle with white border to pop */}
+                    <Scatter 
+                      dataKey="mean" 
+                      fill="#0d9488" 
+                      name="Best Fit Estimate" 
+                      shape={(props: any) => {
+                        const { cx, cy, fill, stroke, strokeWidth } = props;
+                        return (
+                          <circle 
+                            cx={cx} 
+                            cy={cy} 
+                            r={5} 
+                            fill={fill} 
+                            stroke={stroke} 
+                            strokeWidth={strokeWidth} 
+                          />
+                        );
+                      }}
+                      stroke="#fff" 
+                      strokeWidth={1.5} 
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
-              </Card>
+              </div>
+            </Card>
 
-              {/* Fit Comparison Plot */}
-              {result.bestPredictions?.size === 0 && (
-                <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5">⚠️</span>
-                  <span>
-                    <strong>No matching observables.</strong> The data column headers ({Object.keys(parsedData[0]?.values ?? {}).join(', ')}) don’t match any model observable names ({observableNames.join(', ') || 'none defined'}).
-                    Rename your data headers to match observable names exactly, or add observables to your model.
-                  </span>
-                </div>
-              )}
-              {fitComparisonData.length > 0 && result.bestPredictions && result.bestPredictions.size > 0 && (
-                <Card className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                        Fit Comparison (Experimental vs. Predicted)
-                      </h3>
-                      <div className="text-xs text-blue-600 font-medium">RMSE: {typeof result.rmse === 'number' ? result.rmse.toExponential(3) : 'N/A'}</div>
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      Circles: Experimental | Lines: Best Estimate
-                    </div>
-                  </div>
-
-                  <ResponsiveContainer width="100%" height={350}>
-                    <ComposedChart data={fitComparisonData} margin={{ top: 10, right: 10, left: 60, bottom: 35 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.1)" vertical={false} />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {/* Fit Comparison */}
+              <Card className="p-4 space-y-2">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                  Time-Course Fit Comparison
+                </h3>
+                <div className="h-[260px] w-full text-slate-700 dark:text-slate-300">
+                  <ResponsiveContainer>
+                    <ComposedChart data={fitComparisonData} margin={{ top: 10, right: 20, left: 65, bottom: 36 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.15} vertical={false} />
                       <XAxis
                         dataKey="time"
                         type="number"
-                        tick={{ fontSize: 11, fill: '#334155' }}
-                        label={{ value: 'Time', position: 'bottom', offset: 0, fill: '#334155', fontSize: 13, fontWeight: 'bold' }}
+                        domain={['dataMin', 'dataMax']}
+                        label={{ value: 'Time', position: 'bottom', offset: 12, fill: 'currentColor', fontSize: 13, fontWeight: 'bold' }}
+                        tickCount={6}
+                        tickMargin={6}
+                        tick={{ fontSize: 11, fill: 'currentColor' }}
+                        tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        tickFormatter={(v) => formatValue(v)}
                       />
                       <YAxis
-                        width={65}
-                        tick={{ fontSize: 11, fill: '#334155' }}
-                        label={{ 
-                          value: 'Concentration/Amount', 
-                          angle: -90, 
-                          position: 'insideLeft', 
-                          offset: -45, 
-                          fill: '#334155', 
-                          fontSize: 13, 
-                          fontWeight: 'bold',
-                          style: { textAnchor: 'middle' }
-                        }}
+                        label={{ value: 'Amount', angle: -90, position: 'insideLeft', fill: 'currentColor', fontSize: 13, fontWeight: 'bold', offset: 20, style: { textAnchor: 'middle' } }}
+                        tickCount={5}
+                        tick={{ fontSize: 11, fill: 'currentColor' }}
+                        tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        tickFormatter={(v) => formatValue(v)}
                       />
                       <Tooltip
-                        formatter={(value: number, name: string) => {
-                          if (name === 'time') return [null, null];
-                          return [value.toFixed(2), name];
-                        }}
-                        labelFormatter={(label) => `Time: ${label}`}
+                        labelFormatter={(label) => `Time: ${formatValue(Number(label))}`}
+                        formatter={(value: any, name: string) => [formatValue(Number(value)), name]}
+                        contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}
                       />
-                      <Legend verticalAlign="top" height={40} />
-
-                      {/* Plot each observable: Scatter for experimental, Line for predicted */}
-                      {Array.from(result.bestPredictions?.keys() || []).map((obsName, idx) => (
-                        <React.Fragment key={obsName}>
-                          <Scatter
-                            name={`${obsName} (Exp)`}
-                            dataKey={`${obsName}_exp`}
-                            fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                            stroke="#ffffff"
-                            strokeWidth={1}
-                            shape="circle"
-                            isAnimationActive={false}
-                          />
-                          <Line
-                            name={`${obsName} (Pred)`}
-                            type="monotone"
-                            dataKey={`${obsName}_pred`}
-                            stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                            strokeWidth={2}
-                            dot={false}
-                            isAnimationActive={false}
-                          />
-                        </React.Fragment>
+                      {Array.from(result.bestPredictions?.keys() || []).map((obs, idx) => (
+                        <Scatter key={`${obs}_exp`} name={`${obs} (Exp)`} dataKey={`${obs}_exp`} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                      ))}
+                      {Array.from(result.bestPredictions?.keys() || []).map((obs, idx) => (
+                        <Line key={`${obs}_pred`} type="monotone" name={`${obs} (Fit)`} dataKey={`${obs}_pred`} stroke={CHART_COLORS[idx % CHART_COLORS.length]} strokeWidth={1.5} dot={false} animationDuration={1500} animationEasing="ease-out" />
                       ))}
                     </ComposedChart>
                   </ResponsiveContainer>
-                </Card>
-              )}
+                </div>
+                {/* External legend matching ResultsChart pattern */}
+                <div className="max-h-28 overflow-y-auto border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <div className="flex flex-wrap justify-center items-center gap-x-3 gap-y-1.5 px-2">
+                    {Array.from(result.bestPredictions?.keys() || []).flatMap((obs, idx) => [
+                      <div key={`${obs}_exp_leg`} className="flex items-center gap-1.5">
+                        <div style={{ width: 10, height: 10, backgroundColor: CHART_COLORS[idx % CHART_COLORS.length], borderRadius: '50%' }} />
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400">{obs} (Exp)</span>
+                      </div>,
+                      <div key={`${obs}_fit_leg`} className="flex items-center gap-1.5">
+                        <div style={{ width: 14, height: 2, backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }} />
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400">{obs} (Fit)</span>
+                      </div>
+                    ])}
+                  </div>
+                </div>
+              </Card>
 
-              {/* ELBO Convergence Plot */}
-              {elboChartData.length > 0 && (
-                <Card className="space-y-4">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                    SSE Convergence (Optimization Progress)
-                  </h3>
-
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={elboChartData} margin={{ top: 10, right: 30, left: 55, bottom: 40 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.15)" vertical={false} />
+              {/* SSE Convergence */}
+              <Card className="p-4 space-y-2">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                  Optimization Path (Residual Convergence)
+                </h3>
+                <div className="h-[260px] w-full text-slate-700 dark:text-slate-300">
+                  <ResponsiveContainer>
+                    <LineChart
+                      data={elboChartData.map(d => ({ ...d, logElbo: d.elbo > 0 ? Math.log10(d.elbo) : null }))}
+                      margin={{ top: 10, right: 20, left: 65, bottom: 36 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.15} vertical={false} />
                       <XAxis
                         dataKey="iteration"
-                        tick={{ fontSize: 11, fill: 'black' }}
-                        tickLine={{ stroke: 'black' }}
-                        axisLine={{ stroke: 'black' }}
-                        label={{ value: 'Iteration', position: 'bottom', offset: 12, fill: '#334155', fontSize: 13, fontWeight: 'bold' }}
+                        type="number"
+                        domain={[0, 'dataMax']}
+                        label={{ value: 'Iteration', position: 'bottom', offset: 12, fill: 'currentColor', fontSize: 13, fontWeight: 'bold' }}
+                        tickCount={6}
+                        tickMargin={6}
+                        tick={{ fontSize: 11, fill: 'currentColor' }}
+                        tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
                       />
                       <YAxis
-                        width={40}
-                        tick={{ fontSize: 11, fill: 'black' }}
-                        tickLine={{ stroke: 'black' }}
-                        axisLine={{ stroke: 'black' }}
-                        label={{ 
-                          value: 'SSE', 
-                          angle: -90, 
-                          position: 'insideLeft', 
-                          offset: -20, 
-                          fill: '#334155', 
-                          fontSize: 13, 
-                          fontWeight: 'bold',
-                          style: { textAnchor: 'middle' } 
+                        dataKey="logElbo"
+                        label={{ value: 'log₁₀(SSE)', angle: -90, position: 'insideLeft', fill: 'currentColor', fontSize: 13, fontWeight: 'bold', offset: 20, style: { textAnchor: 'middle' } }}
+                        tickCount={5}
+                        tick={{ fontSize: 11, fill: 'currentColor' }}
+                        tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                        tickFormatter={(v: number) => {
+                          if (!Number.isFinite(v)) return '';
+                          const exp = Math.round(v);
+                          const mantissa = Math.pow(10, v - exp);
+                          return mantissa >= 1.05 ? `${mantissa.toFixed(1)}e${exp}` : `1e${exp}`;
                         }}
                       />
-                      <Tooltip formatter={(value: number, name: string) => [value.toFixed(4), name]} />
-                      <Line type="monotone" dataKey="elbo" stroke={CHART_COLORS[2]} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                      <Tooltip
+                        labelFormatter={(label) => `Iteration: ${label}`}
+                        formatter={(v: any) => [formatValue(Math.pow(10, Number(v))), 'SSE']}
+                        contentStyle={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="logElbo"
+                        stroke="#ef4444"
+                        strokeWidth={1.5}
+                        dot={{ r: 3, fill: '#ef4444', strokeWidth: 0 }}
+                        activeDot={{ r: 5 }}
+                        connectNulls={false}
+                        animationDuration={1500}
+                        animationEasing="ease-out"
+                      />
                     </LineChart>
                   </ResponsiveContainer>
-                </Card>
-              )}
-
-              {/* Export Buttons */}
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="subtle"
-                  onClick={() => {
-                    const csv = [
-                      ['Parameter', 'Posterior Mean', 'Posterior Std', '95% CI Lower', '95% CI Upper'].join(','),
-                      ...result.parameters.map((name, i) =>
-                        [name, result.posteriorMean[i], result.posteriorStd[i], result.credibleIntervals[i].lower, result.credibleIntervals[i].upper].join(',')
-                      )
-                    ].join('\n');
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'parameter_estimation_results.csv';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                >
-                  Export CSV
-                </Button>
-                <Button
-                  variant="subtle"
-                  onClick={() => {
-                    const exportData = {
-                      parameters: result.parameters,
-                      posteriorMean: result.posteriorMean,
-                      posteriorStd: result.posteriorStd,
-                      credibleIntervals: result.credibleIntervals,
-                      elbo: result.elbo,
-                      convergence: result.convergence,
-                      iterations: result.iterations,
-                      priors: result.parameters.map((name, i) => ({
-                        name,
-                        mean: result.priorMeans[i]
-                      }))
-                    };
-                    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'parameter_estimation_results.json';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                >
-                  Export JSON
-                </Button>
-              </div>
-            </>
-          )}
-        </>
-      )}
+                </div>
+                {/* Legend */}
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-2 flex justify-center">
+                  <div className="flex items-center gap-1.5">
+                    <div style={{ width: 14, height: 2, backgroundColor: '#ef4444' }} />
+                    <span className="text-[10px] text-slate-600 dark:text-slate-400">SSE (log scale)</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

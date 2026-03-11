@@ -67,7 +67,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({ code, className, model
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={handleClose}>
                     <div
-                        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-lg w-full mx-4 p-6"
+                        className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded-lg shadow-xl max-w-lg w-full mx-4 p-6"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex justify-between items-center mb-4">
@@ -98,7 +98,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({ code, className, model
                                         onModelNameChange?.(value.trim() ? value : null);
                                     }}
                                     placeholder="e.g., My custom model"
-                                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-700 dark:text-slate-200"
+                                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 dark:border-slate-600 rounded-md text-slate-700 dark:text-slate-200"
                                 />
                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                                     Set a custom name for sharing and embeds.
@@ -114,7 +114,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({ code, className, model
                                         type="text"
                                         readOnly
                                         value={shareUrl}
-                                        className="flex-1 px-3 py-2 text-sm bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 truncate"
+                                        className="flex-1 px-3 py-2 text-sm bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 truncate"
                                         onClick={(e) => (e.target as HTMLInputElement).select()}
                                     />
                                     <Button onClick={handleCopy} variant={copied ? 'primary' : 'subtle'}>
@@ -134,7 +134,7 @@ export const ShareButton: React.FC<ShareButtonProps> = ({ code, className, model
                                     readOnly
                                     value={embedCode}
                                     rows={2}
-                                    className="w-full px-3 py-2 text-sm bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 font-mono"
+                                    className="w-full px-3 py-2 text-sm bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 border border-slate-200 dark:border-slate-700 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 font-mono"
                                     onClick={(e) => (e.target as HTMLTextAreaElement).select()}
                                 />
                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

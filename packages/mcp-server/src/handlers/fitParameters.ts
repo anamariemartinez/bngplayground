@@ -1,11 +1,11 @@
 import { ParamBounds, ExperimentalDataPoint, fitParameters, simulate, loadEvaluator } from '@bngplayground/engine';
 import { ToolArgs, ToolResult } from '../types/index.js';
 import { fitParametersArgsSchema } from '../schemas/index.js';
-import { createToolResult, parseArgs, parseModelOrThrow, expandModel, cloneExpandedModel, updateMassActionRates } from '../services/engine.js';
+import { createToolResult, parseArgs, applyNetworkOptions, parseModelOrThrow, expandModel, cloneExpandedModel, updateMassActionRates } from '../services/engine.js';
 
 export async function handleFitParameters(args: ToolArgs): Promise<ToolResult<any>> {
     const parsedArgs = parseArgs('fit_parameters', fitParametersArgsSchema, args);
-    const model = parseModelOrThrow(parsedArgs.code);
+    const model = applyNetworkOptions(parseModelOrThrow(parsedArgs.code), parsedArgs);
     const expandedModel = await expandModel(model);
 
     const paramBounds: ParamBounds[] = Object.entries(parsedArgs.parameters).map(([name, b]) => ({

@@ -605,7 +605,7 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
 
   return (
     <div className="flex flex-col h-full gap-2">
-      <div className="flex flex-col gap-1 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
+      <div className="flex flex-col gap-1 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700 shadow-sm">
         <div className="flex items-center gap-1">
           <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">Layout:</span>
           <Button variant={activeLayout === 'fcose' ? 'primary' : 'subtle'} onClick={() => runLayout('fcose')} disabled={isLayoutRunning} className="text-xs h-6 px-1.5" title="Smart Compound Layout (Default)">
@@ -640,9 +640,9 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
         </div>
       </div>
 
-      <div className="relative w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg shadow-sm" data-testid="contact-map-panel">
+      <div className="relative w-full border border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-900 rounded-lg shadow-sm" data-testid="contact-map-panel">
         {!layoutDone && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 dark:bg-slate-900/70 rounded-lg">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-slate-900/70 dark:bg-slate-900/70 rounded-lg">
             <LoadingSpinner className="w-8 h-8 text-[#0ea5e9]" />
             <span className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-400 animate-pulse">Computing Layout...</span>
           </div>
@@ -655,11 +655,11 @@ export const ContactMapViewer: React.FC<ContactMapViewerProps> = ({ contactMap, 
       </div>
 
       {/* Legend rendered below the graph container */}
-      <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700">
-        <h4 className="text-xs font-semibold text-slate-500 uppercase">Legend</h4>
+      <div className="flex items-center gap-4 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700">
+        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Legend</h4>
         <div className="flex items-center gap-4 text-xs flex-wrap">
           <div className="flex items-center gap-2"><div className="w-3 h-3 rounded bg-[#D2D2D2] border border-black" /><span className="text-slate-700 dark:text-slate-300">Molecule</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded bg-white border border-black" /><span className="text-slate-700 dark:text-slate-300">Component</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded bg-white dark:bg-slate-900 border border-black" /><span className="text-slate-700 dark:text-slate-300">Component</span></div>
           <div className="flex items-center gap-2"><div className="w-3 h-3 rounded bg-[#FFCC00] border border-black" /><span className="text-slate-700 dark:text-slate-300">State</span></div>
           <div className="flex items-center gap-2"><div className="w-6 h-0 border-t border-black" /><span className="text-slate-700 dark:text-slate-300">Bond</span></div>
           {ruleOverlay && (

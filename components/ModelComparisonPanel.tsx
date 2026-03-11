@@ -50,12 +50,12 @@ export const ModelComparisonPanel: React.FC<ModelComparisonPanelProps> = ({ curr
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-900 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700">
         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
           Paste a second BNGL model to compare:
         </label>
         <textarea
-          className="w-full h-32 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 p-2"
+          className="w-full h-32 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 dark:border-slate-600 bg-white dark:bg-slate-900 dark:bg-slate-800 text-slate-800 dark:text-slate-200 p-2"
           placeholder="Paste BNGL code here..."
           value={pastedBngl}
           onChange={(e) => setPastedBngl(e.target.value)}
@@ -75,7 +75,7 @@ export const ModelComparisonPanel: React.FC<ModelComparisonPanelProps> = ({ curr
       </div>
 
       {comparison && (
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-900 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700 dark:border-slate-700">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
             Comparison Results
           </h3>
@@ -94,10 +94,10 @@ export const ModelComparisonPanel: React.FC<ModelComparisonPanelProps> = ({ curr
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
-                    <th className="py-1 px-2 text-slate-500">Status</th>
-                    <th className="py-1 px-2 text-slate-500">Source</th>
-                    <th className="py-1 px-2 text-slate-500">Target</th>
+                  <tr className="border-b border-slate-200 dark:border-slate-700 dark:border-slate-700 text-left">
+                    <th className="py-1 px-2 text-slate-500 dark:text-slate-400">Status</th>
+                    <th className="py-1 px-2 text-slate-500 dark:text-slate-400">Source</th>
+                    <th className="py-1 px-2 text-slate-500 dark:text-slate-400">Target</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -120,7 +120,7 @@ export const ModelComparisonPanel: React.FC<ModelComparisonPanelProps> = ({ curr
             </div>
           )}
           {comparison.diffs.length === 0 && (
-            <p className="text-xs text-slate-500">No differences found — models are identical in structure.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">No differences found — models are identical in structure.</p>
           )}
         </div>
       )}
@@ -130,7 +130,7 @@ export const ModelComparisonPanel: React.FC<ModelComparisonPanelProps> = ({ curr
 
 const SummaryCard: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => {
   const colorClasses: Record<string, string> = {
-    slate: 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
+    slate: 'bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
     green: 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400',
     blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400',
     red: 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400',

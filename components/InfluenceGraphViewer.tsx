@@ -337,7 +337,7 @@ export const InfluenceGraphViewer: React.FC<InfluenceGraphViewerProps> = ({ grap
   return (
     <div className="flex flex-col h-full gap-2">
       {/* Toolbar */}
-      <div className="flex flex-col gap-1 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700">
+      <div className="flex flex-col gap-1 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700">
         {/* Row 1: Layout Buttons */}
         <div className="flex items-center gap-1">
           <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">Layout:</span>
@@ -412,12 +412,12 @@ export const InfluenceGraphViewer: React.FC<InfluenceGraphViewerProps> = ({ grap
       {/* Graph Container */}
       <div
         ref={containerRef}
-        className="h-[600px] w-full rounded-lg border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+        className="h-[600px] w-full rounded-lg border border-stone-200 bg-white dark:bg-slate-900 dark:border-slate-700 dark:bg-slate-900"
       />
 
       {/* Legend */}
-      <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700">
-        <h4 className="text-xs font-semibold text-slate-500 uppercase">Legend</h4>
+      <div className="flex items-center gap-4 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700">
+        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Legend</h4>
         <div className="flex items-center gap-4 text-xs flex-wrap">
           <div className="flex items-center gap-2">
             <div className="w-6 h-0 border-t-2 border-[#22c55e]" />

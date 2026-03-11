@@ -1,5 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { Button } from './ui/Button';
 import { SettingsIcon } from './icons/SettingsIcon';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
@@ -95,10 +96,52 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
   const [nfsimSeed, setNfsimSeed] = useState('');
 
   const optionsRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (showOptions && optionsRef.current && popoverRef.current) {
+      const triggerRect = optionsRef.current.getBoundingClientRect();
+      const popoverRect = popoverRef.current.getBoundingClientRect();
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
+
+      // Position above the trigger (aligning right edges)
+      let left = triggerRect.right + scrollLeft - popoverRect.width;
+      let top = triggerRect.top + scrollTop - popoverRect.height - 8; // 8px margin
+
+      // Safety checks: viewport boundaries
+      if (left < scrollLeft + 4) left = scrollLeft + 4;
+      if (left + popoverRect.width > window.innerWidth + scrollLeft - 4) {
+        left = window.innerWidth + scrollLeft - popoverRect.width - 4;
+      }
+      if (top < scrollTop + 4) {
+        // Flip to bottom if no space above
+        top = triggerRect.bottom + scrollTop + 8;
+      }
+
+      setCoords({ top, left });
+    }
+  }, [showOptions]);
+
+  useLayoutEffect(() => {
+    if (showOptions) {
+      updatePosition();
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [showOptions, updatePosition]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (optionsRef.current && !optionsRef.current.contains(event.target as Node)) {
+      const isOutsideTrigger = optionsRef.current && !optionsRef.current.contains(event.target as Node);
+      const isOutsidePopover = popoverRef.current && !popoverRef.current.contains(event.target as Node);
+      
+      if (isOutsideTrigger && isOutsidePopover) {
         setShowOptions(false);
       }
     };
@@ -168,9 +211,9 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
         <button
           onClick={() => setShowOptions(!showOptions)}
           title="Configure simulation options"
-          className="flex items-center gap-1 px-4 py-2 text-sm text-slate-600 
+          className="flex items-center gap-1 px-4 py-2 text-sm text-slate-600 dark:text-slate-400 
                      hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200
-                     hover:bg-slate-100 dark:hover:bg-slate-700 rounded border border-transparent hover:border-slate-200 dark:hover:border-slate-600 transition-all"
+                     hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-700 rounded border border-transparent hover:border-slate-200 dark:border-slate-700 dark:hover:border-slate-600 transition-all"
         >
           <SettingsIcon className="w-3.5 h-3.5" />
           <span className="font-medium">{configSummary}</span>
@@ -178,9 +221,18 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
         </button>
 
         {/* Options popover */}
-        {showOptions && (
-          <div className="absolute bottom-full right-0 mb-1 w-72 max-h-[85vh] overflow-y-auto p-4 bg-white dark:bg-slate-800 
-                          border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 ring-1 ring-black ring-opacity-5 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
+        {showOptions && ReactDOM.createPortal(
+          <div 
+            ref={popoverRef}
+            style={{
+              position: 'absolute',
+              top: coords.top,
+              left: coords.left,
+              zIndex: 9999,
+            }}
+            className="w-72 max-h-[85vh] overflow-y-auto p-4 bg-white dark:bg-slate-900 dark:bg-slate-800 
+                          border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-lg shadow-2xl ring-1 ring-black ring-opacity-5 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 animate-in fade-in zoom-in-95 duration-100"
+          >
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 Simulation Options
@@ -192,13 +244,13 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5 block">
                 Simulation Method
               </label>
-              <div className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-md">
+              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-900/50 p-1 rounded-md">
                 {['default', 'ode', 'ssa', 'nf'].map(m => (
                   <button
                     key={m}
-                    onClick={() => setMethod(m as typeof method)}
+                    onClick={() => setMethod(m as any)}
                     className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-all ${method === m
-                      ? 'bg-white dark:bg-slate-700 text-teal-700 dark:text-teal-400 shadow-sm'
+                      ? 'bg-white dark:bg-slate-900 dark:bg-slate-700 text-teal-700 dark:text-teal-400 shadow-sm'
                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                       }`}
                   >
@@ -215,7 +267,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                   type="number"
                   value={tEnd}
                   onChange={e => setTEnd(e.target.value)}
-                  className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                  className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                 />
               </div>
               <div>
@@ -224,14 +276,14 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                   type="number"
                   value={nSteps}
                   onChange={e => setNSteps(e.target.value)}
-                  className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                  className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                 />
               </div>
             </div>
 
             {/* SSA-specific options */}
             {method === 'ssa' && (
-              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
                     Track Rule Influence
@@ -246,7 +298,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                     type="checkbox"
                     checked={includeInfluence}
                     onChange={e => setIncludeInfluence(e.target.checked)}
-                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                    className="w-3.5 h-3.5 text-indigo-600 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500"
                   />
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 italic">
@@ -257,7 +309,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
 
             {/* ODE-specific options */}
             {method === 'ode' && (
-              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div>
                   <label className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 block">
                     Solver Algorithm
@@ -265,7 +317,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                   <select
                     value={solver}
                     onChange={e => setSolver(e.target.value)}
-                    className="w-full px-2 py-1.5 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                    className="w-full px-2 py-1.5 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                   >
                     <option value="auto">Auto (recommended)</option>
                     <option value="cvode">CVODE (Stiff)</option>
@@ -283,7 +335,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                       value={atol}
                       onChange={e => setAtol(e.target.value)}
                       placeholder="1e-6"
-                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                     />
                   </div>
                   <div>
@@ -293,7 +345,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                       value={rtol}
                       onChange={e => setRtol(e.target.value)}
                       placeholder="1e-3"
-                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                     />
                   </div>
                 </div>
@@ -302,7 +354,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
 
             {/* NFsim-specific options */}
             {method === 'nf' && (
-              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">
                   <strong>NFsim Parameters</strong> - Network-free stochastic simulation
                 </div>
@@ -323,7 +375,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                       value={utl}
                       onChange={e => setUtl(e.target.value)}
                       placeholder="Auto"
-                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                     />
                   </div>
                   <div>
@@ -341,7 +393,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                       value={gml}
                       onChange={e => setGml(e.target.value)}
                       placeholder="1000000"
-                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                     />
                   </div>
                 </div>
@@ -362,7 +414,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                       value={equilibrate}
                       onChange={e => setEquilibrate(e.target.value)}
                       placeholder="0"
-                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                     />
                   </div>
                   <div>
@@ -380,18 +432,19 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
                       value={nfsimSeed}
                       onChange={e => setNfsimSeed(e.target.value)}
                       placeholder="Random"
-                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-slate-900 dark:bg-slate-900 border-slate-300 dark:border-slate-600 dark:border-slate-600"
                     />
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded">
+                <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/50 p-2 rounded">
                   <strong>Note:</strong> NFsim is ideal for models with large or infinite state spaces.
                   For small models, ODE or SSA methods may be faster.
                 </div>
               </div>
             )}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

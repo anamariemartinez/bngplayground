@@ -858,7 +858,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
                 type="checkbox"
                 checked={isLogScale}
                 onChange={(evt) => setIsLogScale(evt.target.checked)}
-                className="rounded border-slate-300 text-primary focus:ring-primary"
+                className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
               />
               Log scale
             </label>
@@ -890,7 +890,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
                 );
               })}
             </Select>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               {parameterTypeMap[parameter1] === 'species'
                 ? `Numbers correspond to the initial concentration/amount of the selected species. This value is injected directly into the simulator; changing the underlying parameter (${model?.species.find((s) => s.name === parameter1)?.initialExpression || parameter1}) outside of the scan UI will not automatically update the species.`
                 : 'Numbers correspond to the value of the selected model parameter.'}
@@ -926,7 +926,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
                   );
                 })}
               </Select>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
                 {parameterTypeMap[parameter2] === 'species'
                   ? `Numbers correspond to the initial concentration/amount of the selected species. This value is injected directly into the simulator; changing the underlying parameter (${model?.species.find((s) => s.name === parameter2)?.initialExpression || parameter2}) outside of the scan UI will not automatically update the species.`
                   : 'Numbers correspond to the value of the selected model parameter.'}
@@ -1064,7 +1064,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
               checked={useSurrogate}
               onChange={(e) => setUseSurrogate(e.target.checked)}
               disabled={surrogateStatus !== 'ready'}
-              className="rounded border-slate-300 text-primary focus:ring-primary disabled:opacity-50"
+              className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary disabled:opacity-50"
             />
             Use surrogate for scans
           </label>
@@ -1102,7 +1102,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
                 value={surrogateNetworkSize}
                 onChange={(e) => setSurrogateNetworkSize(e.target.value as typeof surrogateNetworkSize)}
                 disabled={surrogateStatus === 'training'}
-                className="mt-1 block w-full rounded-md border-slate-300 shadow-sm focus:border-primary focus:ring-primary text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"
+                className="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 shadow-sm focus:border-primary focus:ring-primary text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-200"
               >
                 <option value="auto">Auto (based on species)</option>
                 <option value="light">Light [32,32] ~2K params</option>
@@ -1139,7 +1139,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
 
         {surrogateStatus === 'training' && (
           <div className="w-full">
-            <div className="text-xs text-slate-500 mb-1">
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
               {surrogateProgress.phase === 'data'
                 ? `Generating training data: ${surrogateProgress.current} / ${surrogateProgress.total}`
                 : `Training surrogate: Epoch ${surrogateProgress.current} / ${surrogateProgress.total}`}
@@ -1155,15 +1155,15 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
 
         {surrogateMetrics && surrogateStatus === 'ready' && (
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-slate-50 dark:bg-slate-800 rounded p-2">
+            <div className="bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 rounded p-2">
               <div className="text-xs text-slate-500 dark:text-slate-400">MSE</div>
               <div className="text-sm font-medium">{surrogateMetrics.mse.toExponential(2)}</div>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-800 rounded p-2">
+            <div className="bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 rounded p-2">
               <div className="text-xs text-slate-500 dark:text-slate-400">MAE</div>
               <div className="text-sm font-medium">{surrogateMetrics.mae.toExponential(2)}</div>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-800 rounded p-2">
+            <div className="bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800 rounded p-2">
               <div className="text-xs text-slate-500 dark:text-slate-400">Mean R²</div>
               <div className="text-sm font-medium">
                 {(surrogateMetrics.r2.reduce((a, b) => a + b, 0) / surrogateMetrics.r2.length).toFixed(3)}
@@ -1181,7 +1181,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
             ⚠️ Running on CPU (slow). Use a GPU-enabled browser (Chrome/Edge with WebGL) for 10-50x faster training.
           </div>
         )}
-        <div className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+        <div className="text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 mt-2">
           🖥️ For best performance, use Chrome or Edge with GPU acceleration enabled. Training uses WebGL when available.
         </div>
       </Card>
@@ -1249,20 +1249,26 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
                   setOneDSelection(null);
                 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.3)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.15} vertical={false} />
                 <XAxis
                   dataKey="parameterValue"
-                  label={{ value: oneDResult.parameterName, position: 'insideBottom', offset: -5, fontWeight: 'bold' }}
+                  label={{ value: oneDResult.parameterName, position: 'insideBottom', offset: -5, fontWeight: 'bold', fill: 'currentColor' }}
                   type="number"
                   domain={currentOneDDomain ? [currentOneDDomain.x1, currentOneDDomain.x2] : ['dataMin', 'dataMax']}
                   scale={isLogScale ? 'log' : 'linear'}
                   tickFormatter={(v) => formatNumber(Number(v))}
+                  tick={{ fontSize: 11, fill: 'currentColor' }}
+                  tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                  axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
                 />
                 <YAxis
-                  label={{ value: selectedObservable, angle: -90, position: 'insideLeft', fontWeight: 'bold' }}
+                  label={{ value: selectedObservable, angle: -90, position: 'insideLeft', fontWeight: 'bold', fill: 'currentColor', offset: 15, style: { textAnchor: 'middle' } }}
                   domain={['auto', 'auto']}
                   allowDataOverflow={true}
                   tickFormatter={formatYAxisTick}
+                  tick={{ fontSize: 11, fill: 'currentColor' }}
+                  tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+                  axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
                 />
                 <Tooltip
                   formatter={(value: any) => formatTooltipNumber(value, 4)}
@@ -1292,10 +1298,10 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-slate-500">Select an observable to visualize the scan.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Select an observable to visualize the scan.</p>
           )}
 
-          <div className="text-center text-xs text-slate-500">
+          <div className="text-center text-xs text-slate-500 dark:text-slate-400">
             Drag on the chart to zoom. Double-click to reset view.
           </div>
 
@@ -1326,7 +1332,7 @@ export const ParameterScanTab: React.FC<ParameterScanTabProps> = ({ model }) => 
         <Card className="space-y-6">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">2D Scan Heatmap</h3>
           <div>
-            <div className="mb-3 text-sm text-slate-500">Heatmap of {selectedObservable} across {twoDResult.parameterNames[0]} and {twoDResult.parameterNames[1]}</div>
+            <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">Heatmap of {selectedObservable} across {twoDResult.parameterNames[0]} and {twoDResult.parameterNames[1]}</div>
             <div className="w-full h-[520px]">
               <HeatmapChart
                 data={heatmapPoints}

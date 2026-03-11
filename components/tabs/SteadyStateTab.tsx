@@ -6,6 +6,7 @@ import { InfoIcon } from '../icons/InfoIcon';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { CHART_COLORS } from '../../constants';
 import { formatTooltipNumber, formatYAxisTick } from '../charts/InteractiveLegend';
+import { formatValue } from '../../src/utils/formatValue';
 import { Card } from '../ui/Card';
 
 interface SteadyStateTabProps {
@@ -77,8 +78,8 @@ export const SteadyStateTab: React.FC<SteadyStateTabProps> = ({ model, results, 
         <Card className="flex-1 min-h-0 flex flex-col p-4">
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Final Concentrations</h3>
-            <p className="text-xs text-slate-500">
-              System equilibrated at t = {typeof finalStateData.time === 'number' ? finalStateData.time.toFixed(2) : finalStateData.time}
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              System equilibrated at t = {formatValue(finalStateData.time)}
             </p>
           </div>
 
@@ -103,7 +104,7 @@ export const SteadyStateTab: React.FC<SteadyStateTabProps> = ({ model, results, 
                 />
                 <Tooltip
                   cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-                  formatter={(value: any) => [formatTooltipNumber(value, 4), 'Concentration']}
+                  formatter={(value: any) => [formatValue(value), 'Concentration']}
                 />
                 <Bar dataKey="value" name="Concentration" radius={[0, 4, 4, 0]}>
                   {finalStateData.data.map((entry, index) => (

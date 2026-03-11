@@ -7,8 +7,11 @@ import { CheatsheetModal } from './CheatsheetModal';
 import { Button } from './ui/Button';
 import { BNGLModel } from '../types';
 import { HelpSection } from './HelpSection';
+import { Card } from './ui/Card';
 
 interface DesignerPanelProps {
+  isCollapsed?: boolean;
+  onExpand?: () => void;
   text: string;
   onTextChange: (text: string) => void;
   onCodeChange: (code: string) => void;
@@ -42,7 +45,7 @@ Start with 20 of SHP1
 Simulate for 0.25s with 200 steps
 `;
 
-export const DesignerPanel: React.FC<DesignerPanelProps> = ({ text, onTextChange, onCodeChange, onParse, onSimulate }) => {
+export const DesignerPanel: React.FC<DesignerPanelProps> = ({ isCollapsed, onExpand, text, onTextChange, onCodeChange, onParse, onSimulate }) => {
   // Use DEFAULT_TEXT if no text provided (first time opening designer)
   const displayText = text || DEFAULT_TEXT;
   const [isCheatsheetOpen, setIsCheatsheetOpen] = useState(false);
@@ -92,9 +95,42 @@ export const DesignerPanel: React.FC<DesignerPanelProps> = ({ text, onTextChange
     onTextChange(e.target.value);
   };
 
+  if (isCollapsed) {
+    return (
+      <Card 
+        className="flex h-full w-full flex-col bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 dark:border-slate-700 items-center justify-start py-6 overflow-hidden cursor-pointer hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 transition-colors" 
+        onClick={() => onExpand?.()}
+        data-testid="designer-panel-collapsed"
+      >
+         <div 
+           className="whitespace-nowrap flex items-center gap-3 mt-4 mb-auto pointer-events-none"
+           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+         >
+            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 dark:text-slate-600 dark:text-slate-400">Designer</span>
+         </div>
+         
+         <div className="mt-auto flex flex-col items-center gap-5 pb-4">
+            <div className="flex flex-col items-center gap-1 group">
+               <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  handleSync();
+                }} 
+                className="w-11 h-11 flex items-center justify-center rounded-full bg-blue-600 shadow-lg border border-blue-500 text-white hover:scale-110 active:scale-95 transition-all" 
+                title="Sync & Visualize"
+              >
+                 <span className="text-xl pl-1">⚡</span>
+               </button>
+               <span className="text-[8px] font-black uppercase text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">Sync</span>
+            </div>
+         </div>
+      </Card>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex justify-between items-center">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 dark:border-slate-800">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-900 flex justify-between items-center">
         <div>
           <h2 className="text-lg font-semibold mb-1">Designer Mode</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -129,9 +165,9 @@ export const DesignerPanel: React.FC<DesignerPanelProps> = ({ text, onTextChange
         <div className="flex-1 flex gap-4 min-h-0">
           {/* NLP Text Editor */}
           <div className="flex-1 flex flex-col min-h-0">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Natural Language Input</h3>
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Natural Language Input</h3>
             <textarea
-              className="flex-1 p-4 font-mono text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+              className="flex-1 p-4 font-mono text-sm bg-white dark:bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
               value={displayText}
               onChange={handleTextChange}
               spellCheck={false}
@@ -141,8 +177,8 @@ export const DesignerPanel: React.FC<DesignerPanelProps> = ({ text, onTextChange
 
           {/* Logic Parser Feedback */}
           <div className="w-1/4 flex flex-col min-h-0">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Logic Parser</h3>
-            <div className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md overflow-y-auto p-2">
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Logic Parser</h3>
+            <div className="flex-1 bg-white dark:bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md overflow-y-auto p-2">
               <div className="space-y-1">
                 {sentences.filter(s => s.type !== 'COMMENT').map((s) => (
                   <div
@@ -167,14 +203,14 @@ export const DesignerPanel: React.FC<DesignerPanelProps> = ({ text, onTextChange
         </div>
 
         {/* BNGL Preview (Monaco) */}
-        <div className="h-48 flex flex-col border-t border-slate-200 dark:border-slate-800 pt-2">
+        <div className="h-48 flex flex-col border-t border-slate-200 dark:border-slate-700 dark:border-slate-800 pt-2">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Generated BNGL Code</h3>
+            <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Generated BNGL Code</h3>
             <span className="text-xs text-slate-400">
               {lastGeneratedCode ? `${lastGeneratedCode.split('\n').length} lines` : 'No code generated'}
             </span>
           </div>
-          <div className="flex-1 min-h-0 border border-slate-200 dark:border-slate-700 rounded-md overflow-hidden shadow-sm">
+          <div className="flex-1 min-h-0 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md overflow-hidden shadow-sm">
              <Editor
                 height="100%"
                 defaultLanguage="bngl"

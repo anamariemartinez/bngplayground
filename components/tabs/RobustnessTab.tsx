@@ -89,10 +89,10 @@ export const RobustnessTab: React.FC<RobustnessTabProps> = ({ model }) => {
     }, [result, visibleSpecies]);
 
     return (
-        <div className="flex flex-col h-full bg-white">
-            <div className="flex flex-col p-4 border-b border-slate-200 gap-1">
+        <div className="flex flex-col h-full bg-white dark:bg-slate-900">
+            <div className="flex flex-col p-4 border-b border-slate-200 dark:border-slate-700 gap-1">
                 <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-900">Robustness Analysis</h3>
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">Robustness Analysis</h3>
                     <div className="flex gap-2">
                         <Button
                             variant="secondary"
@@ -113,7 +113,7 @@ export const RobustnessTab: React.FC<RobustnessTabProps> = ({ model }) => {
 
                 {/* Configuration Panel */}
                 {isConfigOpen && (
-                    <Card className="p-4 bg-slate-50 dark:bg-slate-800/50">
+                    <Card className="p-4 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800/50">
                         <div className="flex flex-wrap items-end gap-4">
                             <div className="flex flex-col gap-1">
                                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Parameter Variation (+/- %)</label>
@@ -142,7 +142,7 @@ export const RobustnessTab: React.FC<RobustnessTabProps> = ({ model }) => {
                             {isRunning ? (
                                 <div className="flex items-center gap-3">
                                     <div className="flex flex-col gap-1 w-32">
-                                        <div className="text-xs text-slate-500 text-center">{progress}%</div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 text-center">{progress}%</div>
                                         <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
                                             <div className="h-full bg-blue-500 transition-all duration-200" style={{ width: `${progress}%` }} />
                                         </div>
@@ -172,7 +172,7 @@ export const RobustnessTab: React.FC<RobustnessTabProps> = ({ model }) => {
                 {result ? (
                     <Card className="flex-1 min-h-0 flex flex-col p-4">
                         <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-sm font-semibold text-slate-700">Sensitivity Cloud</h3>
+                            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Sensitivity Cloud</h3>
                         </div>
 
                         <div className="flex-1 min-h-[450px]">
@@ -237,7 +237,7 @@ export const RobustnessTab: React.FC<RobustnessTabProps> = ({ model }) => {
                             />
                         )}
 
-                        <div className="text-center text-xs text-slate-500 mt-2">
+                        <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-2">
                             Click legend to toggle series. Double-click legend to isolate/restore.
                         </div>
                     </Card>

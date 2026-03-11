@@ -135,6 +135,11 @@ export async function projectedNM(
         // Check function-value convergence.
         const spread = fVal[n] - fVal[0];
         if (spread < ftol && spread >= 0) {
+            opts.onProgress?.({
+                iteration: iter, nEval,
+                bestValue: fVal[0],
+                bestX: Float64Array.from(project(simplex[0])),
+            });
             return {
                 x: project([...simplex[0]]), value: fVal[0], nEval, iterations: iter,
                 converged: true, stopReason: 'converged_f'
@@ -143,6 +148,11 @@ export async function projectedNM(
 
         // Check parameter-space convergence.
         if (maxParamChange(simplex, n) < xtol) {
+            opts.onProgress?.({
+                iteration: iter, nEval,
+                bestValue: fVal[0],
+                bestX: Float64Array.from(project(simplex[0])),
+            });
             return {
                 x: project([...simplex[0]]), value: fVal[0], nEval, iterations: iter,
                 converged: true, stopReason: 'converged_x'
@@ -196,7 +206,7 @@ export async function projectedNM(
 
         iter++;
 
-        if (opts.onProgress && iter % 5 === 0) {
+        if (opts.onProgress) {
             const best = fVal.indexOf(Math.min(...fVal));
             opts.onProgress({
                 iteration: iter, nEval,

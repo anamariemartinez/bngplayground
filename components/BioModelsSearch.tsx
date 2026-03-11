@@ -58,10 +58,10 @@ export const BioModelsSearch: React.FC<BioModelsSearchProps> = ({ onImportById }
 
       <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
         {results.map(r => (
-          <div key={r.id} className="flex items-center justify-between p-2 border rounded bg-slate-50 dark:bg-slate-800">
+          <div key={r.id} className="flex items-center justify-between p-2 border rounded bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800">
             <div className="text-sm">
               <div className="font-medium">{r.name || r.id}</div>
-              <div className="text-xs text-slate-500">{r.id}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{r.id}</div>
             </div>
             <div>
               <Button onClick={() => onImportById(r.id)} className="text-xs">Import</Button>

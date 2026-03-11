@@ -17,6 +17,9 @@ import {
   ReferenceArea,
 } from 'recharts';
 import { FIMHeatmap } from '../../components/FIMHeatmap';
+import { formatValue } from '../../src/utils/formatValue';
+import { CardHeader } from '../ui/Card';
+import { EmptyState } from '../ui/EmptyState';
 
 interface FIMTabProps {
   model: BNGLModel | null;
@@ -285,8 +288,8 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
         <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between">
           <div className="space-y-3 max-w-2xl">
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-semibold">Guided Identifiability Assistant</h2>
-              <span className="text-xs inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-slate-700">Advanced</span>
+              <h2 className="text-xl font-semibold">Guided Local Sensitivity Assistant</h2>
+              <span className="text-xs inline-flex items-center rounded bg-slate-100 dark:bg-slate-800/50 px-2 py-0.5 text-slate-700 dark:text-slate-300">Advanced</span>
             </div>
             <p className="text-sm text-indigo-100/90">
               Start with a preset to size the analysis, then refine manually. We keep track of the current configuration
@@ -340,16 +343,16 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                 </option>
               ))}
             </Select>
-            <div className="mt-2 text-xs text-slate-500">Selected: {selected.length}</div>
+            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Selected: {selected.length}</div>
           </div>
           <div className="flex flex-col gap-3">
-            <div className="text-sm text-slate-600">Compute the Fisher Information Matrix (FIM) using central finite differences across all time points. This performs 2×P simulations where P is the number of selected parameters.</div>
+            <div className="text-sm text-slate-600 dark:text-slate-400">Compute the Fisher Information Matrix (FIM) using central finite differences across all time points. This performs 2×P simulations where P is the number of selected parameters.</div>
             <label className="mt-2 flex items-center gap-2 text-sm">
               <input type="checkbox" checked={useLogParams} onChange={(e) => setUseLogParams(e.target.checked)} />
-              <span className="text-sm text-slate-600">Use log-parameter sensitivities (d/d ln p)</span>
+              <span className="text-sm text-slate-600 dark:text-slate-400">Use log-parameter sensitivities (d/d ln p)</span>
             </label>
             <div className="flex gap-2">
-              <Button onClick={() => handleCompute()} disabled={isComputing || !model || selected.length === 0}>Run Identifiability Analysis</Button>
+              <Button onClick={() => handleCompute()} disabled={isComputing || !model || selected.length === 0}>Run Local Sensitivity Analysis</Button>
               {isComputing && <Button variant="danger" onClick={handleCancel}>Cancel</Button>}
             </div>
             {isComputing && (
@@ -357,7 +360,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 dark:border-blue-400"></div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                    Computing FIM... {progress.current} / {progress.total} simulations
+                    Computing Local Sensitivity... {progress.current} / {progress.total} simulations
                   </p>
                   <div className="w-full bg-blue-200 dark:bg-blue-900/40 rounded-full h-2 mt-2">
                     <div 
@@ -377,7 +380,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
         <Card className="space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-lg font-semibold">Identifiability Analysis Results</h3>
+              <h3 className="text-lg font-semibold">Local Sensitivity Analysis Results</h3>
               <div className="text-sm">
                 <span title="Ratio of largest to smallest eigenvalue. Higher values indicate numerical instability and ill-conditioning.">
                   Condition number:
@@ -406,44 +409,53 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
             </div>
           </div>
           {result.benchmark && (
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               Benchmark: prepareModel {Math.round(result.benchmark.prepareModelMs)} ms · sims {Math.round(result.benchmark.totalSimMs)} ms for {result.benchmark.simCount} runs · total {Math.round(result.benchmark.totalMs)} ms
             </div>
           )}
-          <div className="text-xs text-slate-500 text-right">
+          <div className="text-xs text-slate-500 dark:text-slate-400 text-right">
             Analysis completed: {new Date().toLocaleString()}
             <br />
             Computation time: {result.benchmark?.totalMs ? Math.round(result.benchmark.totalMs) : 'N/A'} ms
           </div>
-          {/* Model Diagnostics Summary */}
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 dark:border-yellow-600 p-4 mb-6">
-            <h3 className="font-semibold text-yellow-800 dark:text-yellow-200">Model Identifiability Summary</h3>
-            <div className="grid grid-cols-2 gap-4 mt-2 text-sm text-yellow-900 dark:text-yellow-100">
-              <div>
-                <span className="font-medium">Condition Number:</span>{' '}
-                <span className={result.conditionNumber > 1000 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
-                  {result.conditionNumber.toExponential(2)}
-                </span>
-                {result.conditionNumber > 1000 && ' (⚠️ Ill-conditioned)'}
-              </div>
-              <div>
-                <span className="font-medium">Identifiable Params:</span>{' '}
-                <span className="text-green-600 dark:text-green-400">{result.identifiableParams?.length || 0}</span>
-                {' / '}
-                {result.paramNames.length}
-              </div>
-              <div>
-                <span className="font-medium">High VIF Count:</span>{' '}
-                <span className="text-red-600 dark:text-red-400">{result.highVIFParams?.length || 0}</span>
-                {result.highVIFParams && result.highVIFParams.length > 0 && ' (⚠️ Collinear)'}
-              </div>
-              <div>
-                <span className="font-medium">Max Correlation:</span>{' '}
-                <span className="text-red-600 dark:text-red-400">
-                  {result.topCorrelatedPairs && result.topCorrelatedPairs.length > 0 ? Math.max(...result.topCorrelatedPairs.map(p => Math.abs(p.corr))).toFixed(3) : 'N/A'}
-                </span>
-              </div>
-            </div>
+          {/* Results Summary Strip */}
+          <div className="flex flex-col md:flex-row gap-4 p-4 bg-teal-50/30 dark:bg-teal-900/10 border border-teal-100 dark:border-teal-900/40 rounded-xl mb-4 shadow-sm animate-in slide-in-from-top-2 duration-300">
+             <div className="flex-1 space-y-1">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Identifiability</div>
+                <div className="flex items-baseline gap-2">
+                   <span className="text-xl font-black text-teal-600 dark:text-teal-400">{result.identifiableParams?.length || 0}</span>
+                   <span className="text-xs text-slate-400">/ {result.paramNames.length} Parameters</span>
+                </div>
+             </div>
+             
+             <div className="flex-1 space-y-1">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Conditioning</div>
+                <div className="flex flex-col">
+                   <span className={`text-sm font-mono font-black ${result.conditionNumber > 1000 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      {formatValue(result.conditionNumber)}
+                   </span>
+                   <span className="text-[9px] font-bold text-slate-400 italic">
+                      {result.conditionNumber < 100 ? 'Well-conditioned' : result.conditionNumber < 10000 ? 'Moderately ill' : 'Severely ill'}
+                   </span>
+                </div>
+             </div>
+
+             <div className="flex-1 space-y-1">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Redundancy</div>
+                <div className="flex items-baseline gap-2">
+                   <span className={`text-xl font-black ${result.highVIFParams?.length ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {result.highVIFParams?.length || 0}
+                   </span>
+                   <span className="text-xs text-slate-400">High VIF Pairings</span>
+                </div>
+             </div>
+
+             <div className="flex-1 space-y-1">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Performance</div>
+                <div className="text-sm font-mono text-slate-500 dark:text-slate-400">
+                   {result.benchmark?.totalMs ? Math.round(result.benchmark.totalMs) : 'N/A'}ms
+                </div>
+             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -463,15 +475,15 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                   const isExpanded = expandedEigen === idx;
                   return (
                     <React.Fragment key={idx}>
-                      <tr className="border-t border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" onClick={() => setExpandedEigen(isExpanded ? null : idx)}>
+                      <tr className="border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-800/50" onClick={() => setExpandedEigen(isExpanded ? null : idx)}>
                         <td className="px-2 py-1 align-top text-slate-700 dark:text-slate-300">{idx + 1}</td>
-                        <td className="px-2 py-1 align-top text-slate-700 dark:text-slate-300">{val.toExponential(3)}</td>
+                        <td className="px-2 py-1 align-top text-slate-700 dark:text-slate-300 font-mono text-[10px]">{formatValue(val)}</td>
                         <td className="px-2 py-1">
                           <div className="flex flex-wrap gap-2">
                             {top.map((p) => (
                               <div key={p.name} className="flex items-center gap-3">
                                 <div className="w-40 truncate text-xs text-slate-600 dark:text-slate-400">{p.name}</div>
-                                <div className="text-xs text-slate-600 dark:text-slate-400">{p.signed.toFixed(4)}</div>
+                                <div className="text-xs text-slate-600 dark:text-slate-400">{formatValue(p.signed)}</div>
                               </div>
                             ))}
                           </div>
@@ -479,10 +491,10 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                       </tr>
 
                       {isExpanded && (
-                        <tr className="bg-slate-50 dark:bg-slate-900">
+                        <tr className="bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900">
                           <td colSpan={3} className="px-4 py-3">
                             <div className="mb-2 text-sm font-medium">Eigenvector {idx + 1} — full parameter loadings</div>
-                            <div className="text-xs text-slate-500 mb-2">Parameters are sorted by absolute loading. Parameters highlighted are those with |loading| ≥ 20% of the top contributor for this eigenvector.</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">Parameters are sorted by absolute loading. Parameters highlighted are those with |loading| ≥ 20% of the top contributor for this eigenvector.</div>
                             <div className="overflow-x-auto">
                               <table className="min-w-full text-sm">
                                 <thead>
@@ -499,14 +511,19 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                                     const isGroup = p.v >= threshold;
                                     const barPct = maxAbs > 0 ? Math.round((p.v / maxAbs) * 100) : 0;
                                     return (
-                                      <tr key={p.name} className={isGroup ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}>
-                                        <td className="px-2 py-1 align-top w-64 truncate">{p.name}</td>
-                                        <td className="px-2 py-1 align-top"><code className="text-xs">{p.signed.toFixed(6)}</code></td>
+                                      <tr key={p.name} className={isGroup ? 'bg-yellow-50/50 dark:bg-yellow-900/10' : ''}>
+                                        <td className="px-2 py-1 align-top w-64 truncate font-mono text-[10px]">{p.name}</td>
+                                        <td className="px-2 py-1 align-top font-mono text-[10px]">{formatValue(p.signed)}</td>
                                         <td className="px-2 py-1 align-top">
-                                          <div className="w-full bg-slate-200 dark:bg-slate-800 h-3 rounded overflow-hidden">
-                                            <div style={{ width: `${barPct}%` }} className="h-3 bg-sky-500" />
+                                          <div className="flex flex-col gap-1">
+                                             <div className="w-full bg-slate-200/50 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                                               <div style={{ width: `${barPct}%` }} className="h-full bg-teal-500 rounded-full" />
+                                             </div>
+                                             <div className="text-[9px] font-bold text-slate-400 flex justify-between">
+                                                <span>{formatValue(p.v)}</span>
+                                                <span className={isGroup ? 'text-teal-600' : ''}>{barPct}% {isGroup ? '• High' : ''}</span>
+                                             </div>
                                           </div>
-                                          <div className="text-xs text-slate-500 mt-1">{p.v.toExponential(3)} ({barPct}%) {isGroup ? '· group' : ''}</div>
                                         </td>
                                       </tr>
                                     );
@@ -559,7 +576,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                 model predictions remain reliable.
               </p>
 
-              <div className="bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 rounded p-3">
+              <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 border border-red-200 dark:border-red-800 rounded p-3">
                 <p className="text-sm text-red-700 dark:text-red-300 font-semibold mb-2">General Recommendations:</p>
                 <ul className="text-sm text-red-600 dark:text-red-400 space-y-1.5 list-disc list-inside">
                   <li>Use <strong>parameter ratios</strong> instead of individual values where mechanistically appropriate</li>
@@ -583,7 +600,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               Export CSV ↓
             </button>
           </div>
-          <div className="text-sm text-slate-600">VIF &gt; 10 suggests strong multicollinearity.</div>
+          <div className="text-sm text-slate-600 dark:text-slate-400">VIF &gt; 10 suggests strong multicollinearity.</div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -597,12 +614,12 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                   const v = result.vif?.[i] ?? 0;
                   const high = Number.isFinite(v) && v > 10;
                   return (
-                    <tr key={name} className={`border-t border-slate-200 dark:border-slate-700 ${high ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
+                    <tr key={name} className={`border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 ${high ? 'bg-amber-50 dark:bg-amber-900/20' : ''}`}>
                       <td className="px-2 py-1 font-mono text-xs text-slate-700 dark:text-slate-300">{name}</td>
                       <td className="px-2 py-1">
                         <div className="flex items-center justify-end gap-2">
-                          <span>{Number.isFinite(v) ? v.toFixed(3) : '∞'}</span>
-                          {Number.isFinite(v) && v > 1000 && <span className="text-red-500 text-xs">🔴 Extreme</span>}
+                          <span className="font-mono">{formatValue(v)}</span>
+                          {Number.isFinite(v) && v > 1000 && <span className="text-red-500 text-[10px] font-bold uppercase">Extreme</span>}
                           {Number.isFinite(v) && v > 10 && v <= 1000 && <span className="text-orange-500 text-xs">🟠 High</span>}
                           {Number.isFinite(v) && v > 5 && v <= 10 && <span className="text-yellow-500 text-xs">🟡 Moderate</span>}
                         </div>
@@ -620,23 +637,23 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
         <Card className="space-y-4">
           {/* Summary Statistics Card */}
           <div className="bg-gradient-to-r from-teal-50 to-blue-50 dark:from-teal-900/20 dark:to-blue-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-6 mb-6 shadow-sm">
-            <h3 className="text-xl font-bold text-teal-800 dark:text-teal-200 mb-4">Identifiability Summary</h3>
+            <h3 className="text-xl font-bold text-teal-800 dark:text-teal-200 mb-4">Local Sensitivity Summary</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-white dark:bg-slate-800 rounded p-3 shadow-sm">
+              <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded p-3 shadow-sm">
                 <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {result.unidentifiableParams?.length || 0}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 uppercase">Unidentifiable</div>
               </div>
-              <div className="bg-white dark:bg-slate-800 rounded p-3 shadow-sm">
+              <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded p-3 shadow-sm">
                 <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {result.identifiableParams?.length || 0}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 uppercase">Identifiable</div>
               </div>
-              <div className="bg-white dark:bg-slate-800 rounded p-3 shadow-sm">
+              <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded p-3 shadow-sm">
                 <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  {result.conditionNumber.toExponential(0)}
+                  {formatValue(result.conditionNumber)}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 uppercase">Condition Number</div>
                 <div className="text-xs mt-1">
@@ -649,7 +666,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                   )}
                 </div>
               </div>
-              <div className="bg-white dark:bg-slate-800 rounded p-3 shadow-sm">
+              <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded p-3 shadow-sm">
                 <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                   {result.nullspaceCombinations?.length || 0}
                 </div>
@@ -657,7 +674,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               </div>
             </div>
 
-            <div className="mt-4 p-3 bg-white dark:bg-slate-800 rounded border border-teal-200 dark:border-teal-800">
+            <div className="mt-4 p-3 bg-white dark:bg-slate-900 dark:bg-slate-800 rounded border border-teal-200 dark:border-teal-800">
               <p className="text-sm text-gray-700 dark:text-gray-300">
                 <strong>Overall Assessment:</strong>{' '}
                 <span className="text-red-600 font-semibold">
@@ -684,15 +701,15 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                   }}
                 />
               </div>
-              <p className="text-xs text-gray-600 mt-1 text-center">
-                Overall Identifiability: {(((result.identifiableParams?.length || 0) / result.paramNames.length) * 100).toFixed(0)}%
+              <p className="text-xs text-gray-600 dark:text-slate-400 mt-1 text-center">
+                Sensitivity Coverage: {(((result.identifiableParams?.length || 0) / result.paramNames.length) * 100).toFixed(0)}%
               </p>
             </div>
 
             {/* Eigenvalue Spectrum Mini-Chart */}
             {result.eigenvalues && result.eigenvalues.length > 0 && (
               <div className="mt-4">
-                <p className="text-sm font-medium text-gray-700 mb-2">Eigenvalue Spectrum</p>
+                <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Sensitivity Spectrum</p>
                 <div style={{ width: '100%', height: 120 }}>
                   <ResponsiveContainer>
                     <LineChart
@@ -727,8 +744,8 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-xs text-gray-600 mt-1 text-center">
-                  Small eigenvalues indicate directions of non-identifiability
+                <p className="text-xs text-gray-600 dark:text-slate-400 mt-1 text-center">
+                  Small eigenvalues indicate directions of low sensitivity
                 </p>
               </div>
             )}
@@ -739,7 +756,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                 className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700 text-sm"
                 onClick={() => {
                   const suggestions = [
-                    '# Unidentifiable parameters detected:',
+                    '# Low sensitivity parameters detected:',
                     ...result.unidentifiableParams?.map(p => `# ${p}`) || [],
                     '',
                     '# Suggested approaches:',
@@ -775,22 +792,22 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
 
           {/* What's Next Action Items */}
           {result.unidentifiableParams && result.unidentifiableParams.length > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6 dark:bg-blue-900/20 dark:border-blue-800">
               <h3 className="font-semibold text-blue-800 mb-3">
                 🎯 Recommended Next Steps
               </h3>
               <ol className="list-decimal list-inside space-y-2 text-sm text-blue-700">
                 <li>Review <strong>Top Correlated Pairs</strong> to understand which parameters co-vary</li>
-                <li>Check <strong>Non-identifiable Combinations</strong> to see which groups are problematic</li>
+                <li>Check <strong>Low-sensitivity Combinations</strong> to see which groups are problematic</li>
                 <li>Consider fixing one parameter per combination using literature data</li>
                 <li>Export results and consult with domain experts about which parameters can be fixed</li>
-                <li>Re-run identifiability analysis after making changes to verify improvement</li>
+                <li>Re-run sensitivity analysis after making changes to verify improvement</li>
               </ol>
             </div>
           )}
 
-          <h3 className="text-lg font-semibold">🎯 Parameter Identifiability Analysis</h3>
-          <div className="text-sm text-slate-600">Analysis of parameter uncertainty and correlations. Non-identifiable parameters appear in combinations that cannot be resolved from the available data.</div>
+          <h3 className="text-lg font-semibold">🎯 Local Sensitivity Analysis</h3>
+          <div className="text-sm text-slate-600 dark:text-slate-400">Analysis of parameter uncertainty and correlations. Low-sensitivity parameters appear in combinations that cannot be resolved from the available data.</div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -798,7 +815,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                   <th className="px-2 py-1 text-left">Parameter</th>
                   <th className="px-2 py-1 text-left">Value</th>
                   <th className="px-2 py-1 text-left">FIM Contribution</th>
-                  <th className="px-2 py-1 text-left">Identifiable</th>
+                  <th className="px-2 py-1 text-left">Sensitive</th>
                   <th className="px-2 py-1 text-left">Top Correlations</th>
                 </tr>
               </thead>
@@ -806,7 +823,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                 {result.paramNames.map((name, idx) => {
                   const paramValue = model?.parameters[name] ?? 0;
                   const correlations = result.correlations[idx] ?? [];
-                  const isIdentifiable = result.identifiableParams?.includes(name) ?? false;
+                  const isSensitive = result.identifiableParams?.includes(name) ?? false;
                   const corrPairs = result.paramNames.map((n, i) => ({ name: n, corr: Math.abs(correlations[i] ?? 0) })).filter(p => p.name !== name).sort((a, b) => b.corr - a.corr);
                   const topCorr = corrPairs.slice(0, 3);
                   // Calculate FIM contribution percentage
@@ -819,7 +836,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                       <td className="px-2 py-1 align-top">{paramValue.toExponential(3)}</td>
                       <td className="px-2 py-1 align-top">{fimContribution.toFixed(1)}%</td>
                       <td className="px-2 py-1 align-top font-medium">
-                        {isIdentifiable ? (
+                        {isSensitive ? (
                           <span className="text-green-600">✓ Yes</span>
                         ) : (
                           <span className="text-red-600">✗ No</span>
@@ -847,7 +864,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
       {result?.nullspaceCombinations && result.nullspaceCombinations.length > 0 && (
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Non-identifiable parameter combinations</h3>
+            <h3 className="text-lg font-semibold">Low-sensitivity parameter combinations</h3>
             <button
               onClick={exportNullSpace}
               className="text-sm text-teal-600 hover:text-teal-700 underline"
@@ -855,7 +872,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               Export CSV ↓
             </button>
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 dark:bg-blue-900/20 dark:border-blue-800">
             <div className="flex items-start gap-3">
               <div className="text-blue-600 text-2xl">ℹ️</div>
               <div>
@@ -870,7 +887,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
                   <strong>What to do:</strong> Fix one parameter per combination using
                   literature values, or design experiments that independently perturb each parameter.
                 </p>
-                <p className="text-xs text-gray-600 mt-2">
+                <p className="text-xs text-gray-600 dark:text-slate-400 mt-2">
                   Threshold: eigenvalues below 0.01% of maximum
                   ({result.eigenvalues && result.eigenvalues.length > 0 ? (Math.max(...result.eigenvalues) * 1e-4).toExponential(1) : '1e-12'})
                 </p>
@@ -879,7 +896,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
           </div>
           <div className="space-y-6">
             {result.nullspaceCombinations.map((comb, idx) => (
-              <div key={idx} className="border border-gray-200 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-slate-800">
+              <div key={idx} className="border border-gray-200 dark:border-gray-700 dark:border-slate-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-900/50 dark:bg-slate-800">
                 <h4 className="font-medium text-gray-800 dark:text-gray-200 mb-3">
                   Combination {idx + 1} — eigenvalue: {comb.eigenvalue.toExponential(2)}
                 </h4>
@@ -970,7 +987,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               Export CSV ↓
             </button>
           </div>
-          <div className="text-sm text-slate-600">Strong correlations (by absolute Pearson correlation from covariance) suggest parameters that co-vary and may be difficult to estimate independently.</div>
+          <div className="text-sm text-slate-600 dark:text-slate-400">Strong correlations (by absolute Pearson correlation from covariance) suggest parameters that co-vary and may be difficult to estimate independently.</div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -983,12 +1000,12 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               </thead>
               <tbody>
                 {result.topCorrelatedPairs.map((p, i) => (
-                  <tr key={`${p.names[0]}-${p.names[1]}`} className={`border-t ${Math.abs(p.corr) > 0.95 ? 'bg-red-50' : ''}`}>
+                  <tr key={`${p.names[0]}-${p.names[1]}`} className={`border-t ${Math.abs(p.corr) > 0.95 ? 'bg-red-50 text-slate-900 dark:bg-red-900/40 dark:text-red-100' : ''}`}>
                     <td className="px-2 py-1 align-top">{i + 1}</td>
                     <td className="px-2 py-1 align-top font-mono text-xs">{p.names[0]}</td>
                     <td className="px-2 py-1 align-top font-mono text-xs">{p.names[1]}</td>
                     <td className="px-2 py-1 align-top font-medium">
-                      <span className={Math.abs(p.corr) > 0.95 ? 'text-red-600 font-bold' : ''}>
+                      <span className={Math.abs(p.corr) > 0.95 ? 'text-red-700 dark:text-red-300 font-bold' : ''}>
                         {(p.corr).toFixed(3)}
                         {Math.abs(p.corr) > 0.95 && ' ⚠️'}
                       </span>
@@ -1005,7 +1022,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
       {result?.profileApproxExtended && Object.keys(result.profileApproxExtended).length > 0 && (
         <Card className="space-y-3">
           <h3 className="text-lg font-semibold">Profile plots (approx)</h3>
-          <div className="text-sm text-slate-600">SSR vs parameter grid for profiled parameters. Shaded region shows approximate confidence interval (χ², df=1).</div>
+          <div className="text-sm text-slate-600 dark:text-slate-400">SSR vs parameter grid for profiled parameters. Shaded region shows approximate confidence interval (χ², df=1).</div>
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
             {Object.entries(result.profileApproxExtended).slice(0, 6).map(([name, infoRaw]) => {
               const info = infoRaw as {
@@ -1046,10 +1063,10 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
       {/* FIM heatmap */}
       {result?.fimMatrix && (
         <Card className="space-y-3">
-          <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
+          <div className="border border-gray-200 dark:border-gray-700 dark:border-slate-700 rounded-lg overflow-hidden">
             <button 
               onClick={() => setShowFIMHeatmap(!showFIMHeatmap)}
-              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
+              className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:bg-gray-800/50 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
             >
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold">Fisher Information Matrix (heatmap)</h3>
@@ -1066,8 +1083,8 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               <span className="text-xl">{showFIMHeatmap ? '▼' : '▶'}</span>
             </button>
             {showFIMHeatmap && (
-              <div className="p-4 bg-white text-slate-900 border-t border-gray-200 dark:border-slate-700 overflow-hidden">
-                <div className="text-sm text-slate-600">Raw Fisher Information Matrix (rows/cols = parameters). Colors indicate magnitude.</div>
+              <div className="p-4 bg-white text-slate-900 dark:text-slate-100 border-t border-gray-200 dark:border-gray-700 dark:border-slate-700 overflow-hidden">
+                <div className="text-sm text-slate-600 dark:text-slate-400">Raw Fisher Information Matrix (rows/cols = parameters). Colors indicate magnitude.</div>
                 <div className="overflow-auto mt-2">
                   <div className="inline-block align-top">
                     <table className="border-collapse" style={{ borderSpacing: 0 }}>
@@ -1114,10 +1131,10 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
       {/* Correlation heatmap */}
       {result?.correlations && (
         <Card className="space-y-3">
-          <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
+          <div className="border border-gray-200 dark:border-gray-700 dark:border-slate-700 rounded-lg overflow-hidden">
             <button 
               onClick={() => setShowCorrelationHeatmap(!showCorrelationHeatmap)}
-              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
+              className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:bg-gray-800/50 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
             >
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold">Parameter correlations (heatmap)</h3>
@@ -1134,8 +1151,8 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
               <span className="text-xl">{showCorrelationHeatmap ? '▼' : '▶'}</span>
             </button>
             {showCorrelationHeatmap && (
-              <div className="p-4 bg-white text-slate-900 border-t border-gray-200 dark:border-slate-700 overflow-hidden">
-                <div className="text-sm text-slate-600">Pearson correlations between parameter estimates. Red indicates strong correlations (potential identifiability issues).</div>
+              <div className="p-4 bg-white text-slate-900 dark:text-slate-100 border-t border-gray-200 dark:border-gray-700 dark:border-slate-700 overflow-hidden">
+                <div className="text-sm text-slate-600 dark:text-slate-400">Pearson correlations between parameter estimates. Red indicates strong correlations (potential identifiability issues).</div>
                 <div className="overflow-auto mt-2">
                   <div className="inline-block align-top">
                     <FIMHeatmap correlations={result.correlations} paramNames={result.paramNames} cellSize={26} />
@@ -1150,17 +1167,17 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
       {/* Jacobian heatmap (truncated if large) */}
       {result?.jacobian && (
         <Card className="space-y-3">
-          <div className="border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden">
+          <div className="border border-gray-200 dark:border-gray-700 dark:border-slate-700 rounded-lg overflow-hidden">
             <button 
               onClick={() => setShowJacobianHeatmap(!showJacobianHeatmap)}
-              className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
+              className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:bg-gray-800/50 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200"
             >
               <h3 className="font-semibold">Jacobian (sensitivity) heatmap</h3>
               <span className="text-xl">{showJacobianHeatmap ? '▼' : '▶'}</span>
             </button>
             {showJacobianHeatmap && (
-              <div className="p-4 bg-white text-slate-900 border-t border-gray-200 dark:border-slate-700 overflow-hidden">
-                <div className="text-sm text-slate-600">Rows: observables×time, Columns: parameters. Showing first 20 rows for readability.</div>
+              <div className="p-4 bg-white text-slate-900 dark:text-slate-100 border-t border-gray-200 dark:border-gray-700 dark:border-slate-700 overflow-hidden">
+                <div className="text-sm text-slate-600 dark:text-slate-400">Rows: observables×time, Columns: parameters. Showing first 20 rows for readability.</div>
                 <div className="overflow-auto mt-2">
                   <table className="border-collapse" style={{ borderSpacing: 0 }}>
                     <thead>
@@ -1198,11 +1215,11 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
       )}
 
       {/* Interpretation Guide */}
-      <details className="border border-gray-200 rounded-lg p-4 mt-6">
+      <details className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 mt-6">
         <summary className="font-semibold cursor-pointer">
           📖 How to interpret these results
         </summary>
-        <div className="mt-3 space-y-3 text-sm text-gray-700">
+        <div className="mt-3 space-y-3 text-sm text-gray-700 dark:text-slate-300">
           <div>
             <strong className="text-teal-700">Condition Number:</strong>
             <ul className="ml-4 mt-1 list-disc">
@@ -1235,7 +1252,7 @@ export const FIMTab: React.FC<FIMTabProps> = ({ model }) => {
             </ul>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-4">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
           <a 
             href="https://en.wikipedia.org/wiki/Identifiability_analysis" 
             target="_blank"

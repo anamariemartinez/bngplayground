@@ -91,9 +91,14 @@ interface EditorPanelProps {
   // New: allow importing SBML from the editor load button and exporting SBML
   onImportSBML?: (file: File) => void;
   onExportSBML?: () => void;
+  onExportSedML?: () => void;
+  onExportOMEX?: () => void;
   onExportBNGL?: () => void;
   onExportNET?: () => void;
   lastResized?: number;
+  isCollapsed?: boolean;
+  onExpand?: () => void;
+  onRunQuick?: () => void;
 }
 
 export const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -113,9 +118,14 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   selection,
   onImportSBML,
   onExportSBML,
+  onExportSedML,
+  onExportOMEX,
   onExportBNGL,
   onExportNET,
   lastResized,
+  isCollapsed,
+  onExpand,
+  onRunQuick,
 }) => {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   // removed first-time-open example gallery state
@@ -160,45 +170,101 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   const handleLoadExample = (exampleCode: string, modelName?: string, modelId?: string) => {
-    console.log('[EditorPanel] handleLoadExample called:', {
-      modelId,
-      modelName,
-      codeLength: exampleCode.length,
-      codePreview: exampleCode.substring(0, 200)
-    });
     onCodeChange(exampleCode);
     onModelNameChange?.(modelName ?? null);
     onModelIdChange?.(modelId ?? null);
     setIsGalleryOpen(false);
-    // automatically parse after loading an example
     onParse();
+    if (isCollapsed) onExpand?.();
   };
+
+  if (isCollapsed) {
+    return (
+      <>
+      <Card 
+        className="flex h-full w-full flex-col bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 items-center justify-start py-6 overflow-hidden cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" 
+        data-testid="editor-panel-collapsed"
+        onClick={() => onExpand?.()}
+      >
+         <div 
+           className="whitespace-nowrap flex items-center gap-3 mt-4 mb-auto pointer-events-none select-none"
+           style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+         >
+            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 dark:text-slate-500">BNGL Editor</span>
+            {loadedModelName && (
+               <span className="text-sm font-bold text-teal-600 dark:text-teal-400 max-h-[300px] truncate">{loadedModelName}</span>
+            )}
+         </div>
+         
+         <div className="mt-auto flex flex-col items-center gap-5 pb-4">
+            <div className="flex flex-col items-center gap-1 group">
+               <button 
+                onClick={(e) => { e.stopPropagation(); setIsGalleryOpen(true); }} 
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-teal-600 hover:scale-110 active:scale-95 transition-all" 
+                title="Models"
+              >
+                  <span className="text-xl">🧬</span>
+               </button>
+               <span className="text-[8px] font-black uppercase text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">Models</span>
+            </div>
+
+            <div className="flex flex-col items-center gap-1 group">
+               <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (onRunQuick) {
+                    onRunQuick();
+                  } else {
+                    onParse();
+                  }
+                }} 
+                className="w-11 h-11 flex items-center justify-center rounded-full bg-teal-600 shadow-lg border border-teal-500 text-white hover:scale-110 active:scale-95 transition-all" 
+                title="Quick Run"
+                disabled={isSimulating}
+              >
+                  {isSimulating ? <LoadingSpinner className="w-5 h-5" /> : <span className="text-xl">▶</span>}
+               </button>
+               <span className="text-[8px] font-black uppercase text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity">Run</span>
+            </div>
+          </div>
+        </Card>
+        <ExampleGalleryModal
+          isOpen={isGalleryOpen}
+          onClose={() => setIsGalleryOpen(false)}
+          onSelect={handleLoadExample}
+          onImportSBML={onImportSBML}
+        />
+      </>
+    );
+  }
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="editor-panel">
       <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
         {/* Header with Status */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-3">
-            BNGL Model Editor
-            {modelExists && validationWarnings.length === 0 && (
-              <span className="text-sm font-normal text-green-600 dark:text-green-400 flex items-center bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">
-                ✅ Parsed
-              </span>
-            )}
-            {validationWarnings.length > 0 && (
-              <span className={`text-sm font-normal px-2 py-0.5 rounded-full flex items-center ${validationWarnings.some(w => w.severity === 'error')
-                ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20'
-                : 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20'
-                }`}>
-                {validationWarnings.some(w => w.severity === 'error') ? '❌ Errors' : `⚠️ ${validationWarnings.length} Warnings`}
-              </span>
-            )}
-            {loadedModelName && (
-              <span className="text-sm font-normal text-slate-500 dark:text-slate-400 flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-                📁 {loadedModelName}
-              </span>
-            )}
+        <div className="flex items-baseline justify-between flex-wrap gap-2 mb-1">
+          <h2 className="text-xl font-black text-slate-800 dark:text-slate-50 tracking-tight flex flex-wrap items-center gap-2">
+            <span className="shrink-0">BNGL Editor</span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {modelExists && validationWarnings.length === 0 && (
+                <span className="text-[10px] uppercase tracking-wider font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-800/30">
+                  Ready
+                </span>
+              )}
+              {validationWarnings.length > 0 && (
+                <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full border ${validationWarnings.some(w => w.severity === 'error')
+                  ? 'text-rose-600 bg-rose-50 border-rose-100 dark:text-rose-400 dark:bg-rose-900/20 dark:border-rose-800/30'
+                  : 'text-amber-600 bg-amber-50 border-amber-100 dark:text-amber-400 dark:bg-amber-900/20 dark:border-amber-800/30'
+                  }`}>
+                  {validationWarnings.some(w => w.severity === 'error') ? 'Error' : `${validationWarnings.length} Warn`}
+                </span>
+              )}
+              {loadedModelName && (
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 dark:border-slate-700 truncate max-w-[120px]" title={loadedModelName}>
+                  {loadedModelName}
+                </span>
+              )}
+            </div>
           </h2>
         </div>
 
@@ -245,22 +311,16 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         {/* Removed redundant big warning panel as per request */}
       </div>
 
-      <div className="mt-4 flex flex-col gap-2 shrink-0 border-t border-slate-200 pt-3 dark:border-slate-700">
+      <div className="mt-4 flex flex-col gap-3 shrink-0 border-t border-slate-200 dark:border-slate-700 pt-4 dark:border-slate-700">
         {/* Row 1: Actions & Simulation Controls */}
-        <div className="flex flex-wrap gap-2 items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => setIsGalleryOpen(true)} className="h-9 px-3">Models</Button>
-            {/* Load dropdown: Local BNGL/SBML or BioModels
-                - Local file: accepts .bngl, .sbml, .xml and preserves filename for
-                  downstream behavior (e.g., BioModels imports use the accession as
-                  a filename so the editor title shows the model ID).
-                - Import from BioModels: opens a small modal that fetches the model
-                  via the BioModels REST API and extracts an SBML file if needed.
-            */}
+            
             <Dropdown align="left" trigger={
               <Button variant="subtle" className="h-9 px-3 inline-flex items-center gap-2">
                 <UploadIcon className="w-4 h-4" />
-                <span>Load</span>
+                <span className="hidden sm:inline">Load</span>
               </Button>
             }>
               <DropdownItem onClick={() => fileInputRef.current?.click()}>Local file (BNGL / SBML)</DropdownItem>
@@ -270,17 +330,23 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             <Dropdown trigger={
               <Button variant="subtle" className="h-9 px-3 inline-flex items-center gap-2" disabled={!modelExists && !code?.trim()} title="Export current model">
                 <span>Export</span>
-                <ChevronDownIcon className="w-3.5 h-3.5 text-slate-500" />
+                <ChevronDownIcon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               </Button>
             }>
               <DropdownItem onClick={() => onExportBNGL?.()} disabled={!code?.trim()}>Export BNGL</DropdownItem>
               <DropdownItem onClick={() => onExportSBML?.()} disabled={!modelExists}>Export SBML</DropdownItem>
+              <DropdownItem onClick={() => onExportSedML?.()} disabled={!modelExists}>Export SED-ML</DropdownItem>
+              <DropdownItem onClick={() => onExportOMEX?.()} disabled={!modelExists}>Export OMEX</DropdownItem>
               <DropdownItem onClick={() => onExportNET?.()} disabled={!modelExists}>Export NET</DropdownItem>
             </Dropdown>
 
             <Button variant="subtle" onClick={() => onCodeChange(formatBNGLMini(code))} className="h-9 px-3">
-              Format
+              <span className="hidden md:inline">Format</span>
+              <span className="md:hidden">✨</span>
             </Button>
+
+            <Button onClick={onParse} variant="secondary" className="h-9 px-4 font-bold">Parse</Button>
+
             <input
               type="file"
               ref={fileInputRef}
@@ -289,11 +355,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               accept=".bngl,.sbml,.xml"
               data-testid="editor-load-input"
             />
-            <div className="border-l border-slate-300 dark:border-slate-600 h-6 mx-1" />
-            <Button onClick={onParse} variant="secondary" className="h-9 px-3">Parse</Button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <SimulationControls
               onRun={onSimulate}
               isSimulating={isSimulating}
@@ -304,17 +368,17 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         </div>
 
         {/* Row 2: Collapsible Parameter Sliders */}
-        <div className="border border-slate-200 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-800/50 overflow-hidden">
+        <div className="border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800/50 overflow-hidden">
           <button
             onClick={() => setIsParamsOpen(!isParamsOpen)}
-            className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+            className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-700/50 transition-colors"
           >
             <span>Parameter Sliders</span>
             <ChevronDownIcon className={`w-4 h-4 transition-transform duration-200 ${isParamsOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {isParamsOpen && (
-            <div className="border-t border-slate-200 dark:border-slate-700 p-2">
+            <div className="border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 p-2">
               <ParameterPanel code={code} onCodeChange={onCodeChange} />
             </div>
           )}

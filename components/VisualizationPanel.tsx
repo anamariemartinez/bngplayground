@@ -14,6 +14,9 @@ import { VerificationTab } from './tabs/VerificationTab';
 import { ParameterScanTab } from './tabs/ParameterScanTab';
 import { ParameterEstimationTab } from './tabs/ParameterEstimationTab';
 import { FluxAnalysisTab } from './tabs/FluxAnalysisTab';
+import { SobolSensitivityTab } from './tabs/SobolSensitivityTab';
+import { ProfileLikelihoodTab } from './tabs/ProfileLikelihoodTab';
+import { ABCSMCTab } from './tabs/ABCSMCTab';
 import { ModelExplorerTab } from './tabs/ModelExplorerTab';
 import { TrajectoryExplorerTab } from './tabs/TrajectoryExplorerTab';
 import { BNGLParser } from '@bngplayground/engine';
@@ -48,7 +51,7 @@ const TabButton: React.FC<{
     onClick={onClick}
     className={`whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm transition-colors ${active
       ? 'border-teal-600 text-teal-600 dark:text-teal-400 dark:border-teal-400'
-      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'
+      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'
       }`}
   >
     {children}
@@ -152,7 +155,7 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
   // 12: Jupyter Export
 
   // Map activeTab to a group for UI highlighting
-  const isAnalysisTab = activeTab >= 2 && activeTab <= 12;
+  const isAnalysisTab = (activeTab >= 2 && activeTab <= 9) || activeTab >= 11;
 
   // Filter parameter names to only those used in seed species (as requested by user)
   const seedParameterNames = React.useMemo(() => {
@@ -167,9 +170,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
   }, [model]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-0 border rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm relative">
+    <div className="flex h-full min-h-0 flex-col gap-0 border rounded-lg border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-white dark:bg-slate-900 dark:bg-slate-800 shadow-sm relative">
       {/* Header / Tabs */}
-      <div className="flex items-center justify-between px-2 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 shrink-0 rounded-t-lg">
+      <div className="flex items-center justify-between px-2 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 dark:border-slate-700 shrink-0 rounded-t-lg">
         <nav className="flex space-x-1" aria-label="Tabs">
           <TabButton active={activeTab === 0} onClick={() => setActiveTab(0)}>
             📈 Time Courses
@@ -186,7 +189,7 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               trigger={
                 <button className={`flex items-center gap-1 py-2 px-3 border-b-2 font-medium text-sm transition-colors ${isAnalysisTab || activeTab === 10
                   ? 'border-teal-600 text-teal-600 dark:text-teal-400 dark:border-teal-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'
+                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'
                   }`}>
                   📊 Analysis
                   <ChevronDownIcon className="w-3 h-3" />
@@ -195,9 +198,12 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
             >
               <div className="px-2 py-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">Parameter Analysis</div>
               <DropdownItem onClick={() => setActiveTab(2)}>🔍 Parameter Scan</DropdownItem>
+              <DropdownItem onClick={() => setActiveTab(4)}>🎯 Local Sensitivity</DropdownItem>
+              <DropdownItem onClick={() => setActiveTab(14)}>📊 Global Sensitivity (Sobol)</DropdownItem>
+              <DropdownItem onClick={() => setActiveTab(5)}>🧬 Parameter Estimation (VI)</DropdownItem>
+              <DropdownItem onClick={() => setActiveTab(16)}>🎲 ABC-SMC (Inference)</DropdownItem>
+              <DropdownItem onClick={() => setActiveTab(15)}>📈 Profile Likelihood</DropdownItem>
               <DropdownItem onClick={() => setActiveTab(3)}>⚖️ Steady State</DropdownItem>
-              <DropdownItem onClick={() => setActiveTab(4)}>🎯 Sensitivity (FIM)</DropdownItem>
-              <DropdownItem onClick={() => setActiveTab(5)}>🧬 Parameter Estimation</DropdownItem>
 
               <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
               <div className="px-2 py-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">Model Analysis</div>
@@ -216,12 +222,12 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
 
         {/* Network View Toggle - only visible on Network tab */}
         {activeTab === 1 && (
-          <div className="flex bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 p-0.5 ml-auto my-1">
+          <div className="flex bg-white dark:bg-slate-900 dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700 p-0.5 ml-auto my-1">
             <button
               onClick={() => setNetworkViewMode('regulatory')}
               className={`px-2 py-0.5 text-xs font-medium rounded ${networkViewMode === 'regulatory'
-                ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
               Regulatory
@@ -229,8 +235,8 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
             <button
               onClick={() => setNetworkViewMode('contact')}
               className={`px-2 py-0.5 text-xs font-medium rounded ${networkViewMode === 'contact'
-                ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
               Contact Map
@@ -239,8 +245,8 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
             <button
               onClick={() => setNetworkViewMode('rules')}
               className={`px-2 py-0.5 text-xs font-medium rounded ${networkViewMode === 'rules'
-                ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
               Rules
@@ -249,8 +255,8 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
             <button
               onClick={() => setNetworkViewMode('influence')}
               className={`px-2 py-0.5 text-xs font-medium rounded ${networkViewMode === 'influence'
-                ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
               Influence
@@ -258,8 +264,8 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
             <button
               onClick={() => setNetworkViewMode('analysis')}
               className={`px-2 py-0.5 text-xs font-medium rounded ${networkViewMode === 'analysis'
-                ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
             >
               Analysis
@@ -402,7 +408,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               ]}
               plotDescription="The X-axis represents the value of the parameter being scanned (e.g., drug concentration), and the Y-axis shows the resulting state of the system."
             />
-            <ParameterScanTab model={model} />
+            <div className="flex-1 min-h-0">
+              <ParameterScanTab model={model} />
+            </div>
           </div>
         )}
 
@@ -432,8 +440,8 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
         {activeTab === 4 && (
           <div className="h-full flex flex-col">
             <HelpSection
-              title="Sensitivity (FIM)"
-              description="Perform Global Identifiability Analysis using the Fisher Information Matrix. Determine if your parameters can be uniquely identified from your data."
+              title="Local Sensitivity"
+              description="Perform local sensitivity analysis using the Fisher Information Matrix (FIM). Determine if your parameters can be uniquely identified from your data."
               features={[
                 "Eigenvalue spectrum analysis",
                 "Parameter loading vectors",
@@ -442,7 +450,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               ]}
               plotDescription="The Eigenvalue spectrum shows which directions in parameter space are well-determined. Loading bars for each eigenvector identify which specific parameters contribute to uncertainty."
             />
-            <FIMTab model={model} />
+            <div className="flex-1 min-h-0">
+              <FIMTab model={model} />
+            </div>
           </div>
         )}
 
@@ -459,7 +469,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               ]}
               plotDescription="The 'ELBO Convergence' plot tracks the Evidence Lower Bound; as it increases and stabilizes, the model fit improves. The 'Posterior Estimates' chart displays the final estimated values along with their 95% uncertainty bars."
             />
-            <ParameterEstimationTab model={model} />
+            <div className="flex-1 min-h-0">
+              <ParameterEstimationTab model={model} />
+            </div>
           </div>
         )}
 
@@ -476,7 +488,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               ]}
               plotDescription="Green bars represent species production; Red bars represent consumption. The length of the bar indicates the magnitude of the flux (rate) at the selected time point."
             />
-            <FluxAnalysisTab model={model} results={results} />
+            <div className="flex-1 min-h-0">
+              <FluxAnalysisTab model={model} results={results} />
+            </div>
           </div>
         )}
 
@@ -493,7 +507,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               ]}
               plotDescription="Constraints are evaluated at every time point. If a condition (like A + B == target) is violated anywhere, the specific failure time and reason will be highlighted."
             />
-            <VerificationTab model={model} results={results} />
+            <div className="flex-1 min-h-0">
+              <VerificationTab model={model} results={results} />
+            </div>
           </div>
         )}
 
@@ -510,7 +526,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               ]}
               plotDescription="Baseline results are shown as solid lines, while your modified 'What-If' results appear as dashed lines. This makes it easy to spot deviations."
             />
-            <ComparisonPanel model={model} baseResults={results} />
+            <div className="flex-1 min-h-0">
+              <ComparisonPanel model={model} baseResults={results} />
+            </div>
           </div>
         )}
 
@@ -604,7 +622,7 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
 
         {activeTab === 13 && (
           // Legacy tab — redirect user to Network → Analysis view
-          <div className="h-full flex items-center justify-center text-sm text-slate-500">
+          <div className="h-full flex items-center justify-center text-sm text-slate-500 dark:text-slate-400">
             Network Analysis has moved to the
             <button
               className="mx-1 underline text-teal-600 dark:text-teal-400"
@@ -613,6 +631,63 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               Network → Analysis
             </button>
             tab.
+          </div>
+        )}
+
+        {activeTab === 14 && (
+          <div className="h-full flex flex-col">
+            <HelpSection
+              title="Global Sensitivity (Sobol)"
+              description="Quantify how much each parameter contributes to the variance of your model outputs across its entire range. Sobol indices provide a robust way to identify the most (and least) influential parameters, accounting for non-linear interactions."
+              features={[
+                "Saltelli unbiased sampling",
+                "First-order (S1) and Total-order (ST) indices",
+                "Bootstrap confidence intervals",
+                "Interaction effect identification"
+              ]}
+              plotDescription="Higher bars indicate parameters that dominate the model variance. If Total-order (ST) is significantly higher than First-order (S1), the parameter has strong non-linear interactions with others."
+            />
+            <div className="flex-1 min-h-0">
+              <SobolSensitivityTab model={model} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 15 && (
+          <div className="h-full flex flex-col">
+            <HelpSection
+              title="Profile Likelihood"
+              description="Evaluate the identifiability of your parameters. By 'stepping' through each parameter and re-optimizing the others, this analysis determines if a parameter is well-determined by your experimental data or if it's structurally/practically unidentifiable."
+              features={[
+                "Likelihood-ratio based confidence intervals",
+                "Identifiability classification (Identifiable, Practical, Structural)",
+                "Full profiling with re-optimization",
+                "Threshold-based significance testing"
+              ]}
+              plotDescription="A sharp parabolic bowl indicates a well-identified parameter. A flat or shallow curve indicates unidentifiability, where multiple parameter combinations explain the data equally well."
+            />
+            <div className="flex-1 min-h-0">
+              <ProfileLikelihoodTab model={model} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 16 && (
+          <div className="h-full flex flex-col">
+            <HelpSection
+              title="ABC-SMC (Bayesian Inference)"
+              description="Approximate Bayesian Computation with Sequential Monte Carlo allows you to infer parameter distributions even without a defined likelihood function. It iteratively refines a population of particles (parameter sets) to match your experimental data."
+              features={[
+                "Likelihood-free Bayesian inference",
+                "Iterative tolerance refinement (SMC)",
+                "Full posterior distribution mapping",
+                "Handles complex, non-Gaussian uncertainties"
+              ]}
+              plotDescription="The posterior distribution shows the range of values that are statistically consistent with your data. The narrower the peak, the more certain the inference."
+            />
+            <div className="flex-1 min-h-0">
+              <ABCSMCTab model={model} />
+            </div>
           </div>
         )}
 

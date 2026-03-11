@@ -190,14 +190,14 @@ export const RuleFlowViewer: React.FC<RuleFlowViewerProps> = ({ graph, selectedR
         <button
           type="button"
           onClick={handleExport}
-          className="rounded bg-slate-800 px-3 py-1 text-xs font-medium text-white shadow hover:bg-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-100"
+          className="rounded bg-slate-800 px-3 py-1 text-xs font-medium text-white shadow hover:bg-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:text-slate-100 dark:hover:bg-slate-100 dark:bg-slate-800/50"
         >
           Export PNG
         </button>
       </div>
       <div
         ref={containerRef}
-        className="h-96 w-full rounded-lg border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900"
+        className="h-96 w-full rounded-lg border border-stone-200 bg-white dark:bg-slate-900 dark:border-slate-700 dark:bg-slate-900"
       />
     </div>
   );

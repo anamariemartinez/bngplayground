@@ -69,6 +69,22 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const valueRef = useRef<string>(value);
   const onRunRef = useRef(onRun);
 
+  const [effectiveTheme, setEffectiveTheme] = React.useState<'light' | 'dark'>(theme);
+
+  useEffect(() => {
+    const updateTheme = () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      setEffectiveTheme(isDark ? 'dark' : 'light');
+    };
+    
+    updateTheme(); // initial check
+    
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -247,20 +263,22 @@ useEffect(() => {
           base: 'vs-dark',
           inherit: true,
           rules: [
-            { token: 'keyword.control', foreground: '569CD6', fontStyle: 'bold' },
-            { token: 'keyword.type', foreground: '4EC9B0', fontStyle: 'bold' },
-            { token: 'keyword.action', foreground: 'C586C0' },
-            { token: 'keyword.observable', foreground: '4EC9B0' },
-            { token: 'keyword.modifier', foreground: 'DCDCAA' },
-            { token: 'type.molecule', foreground: '4FC1FF', fontStyle: 'bold' },
-            { token: 'variable.component', foreground: '9CDCFE' },
-            { token: 'string.state', foreground: 'CE9178' },
-            { token: 'constant.bond', foreground: 'F48771' },
-            { token: 'variable.compartment', foreground: 'B5CEA8' },
-            { token: 'operator.arrow', foreground: 'FFD700', fontStyle: 'bold' },
-            { token: 'variable.parameter', foreground: '9CDCFE' },
+            { token: 'keyword.control', foreground: '3B82F6', fontStyle: 'bold' }, // Blue
+            { token: 'keyword.type', foreground: '14B8A6', fontStyle: 'bold' }, // Teal
+            { token: 'keyword.action', foreground: 'A855F7' }, // Purple
+            { token: 'keyword.observable', foreground: '14B8A6' }, // Teal
+            { token: 'keyword.modifier', foreground: 'F97316' }, // Orange
+            { token: 'type.molecule', foreground: '10B981', fontStyle: 'bold' }, // Green
+            { token: 'variable.component', foreground: '60A5FA' }, // Light Blue
+            { token: 'string.state', foreground: 'EAB308' }, // Yellow
+            { token: 'constant.bond', foreground: 'EF4444' }, // Red
+            { token: 'variable.compartment', foreground: 'C084FC' }, // Light Purple
+            { token: 'operator.arrow', foreground: 'EF4444', fontStyle: 'bold' }, // Red
+            { token: 'variable.parameter', foreground: 'CBD5E1' }, // Light Slate
           ],
-          colors: {},
+          colors: {
+            'editor.background': '#0f172a', // Deep slate to match the dark app backdrop seamlessly
+          },
         });
       }
 
@@ -269,7 +287,7 @@ useEffect(() => {
         // (e.g., shared-link load on startup), and this effect only runs once.
         value: valueRef.current,
         language,
-        theme: theme === 'dark' ? 'bngl-dark' : 'bngl-light',
+        theme: document.documentElement.classList.contains('dark') ? 'bngl-dark' : 'bngl-light',
         automaticLayout: true,
         minimap: { enabled: false },
         wordWrap: 'on',
@@ -389,8 +407,8 @@ useEffect(() => {
   const monaco = monacoRef.current;
   const editor = editorInstanceRef.current;
   if (!monaco || !editor) return;
-  monaco.editor.setTheme(theme === 'dark' ? 'bngl-dark' : 'bngl-light');
-}, [theme]);
+  monaco.editor.setTheme(effectiveTheme === 'dark' ? 'bngl-dark' : 'bngl-light');
+}, [effectiveTheme]);
 
 // Effect 1c: Update language without recreating the editor
 useEffect(() => {

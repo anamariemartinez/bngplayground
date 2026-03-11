@@ -8,7 +8,7 @@ const operationStyles: Record<RuleOperation['type'], string> = {
   unbind: 'bg-rose-500 text-white',
   state_change: 'bg-sky-500 text-white',
   add_molecule: 'bg-violet-500 text-white',
-  remove_molecule: 'bg-slate-500 text-white',
+  remove_molecule: 'bg-slate-50 dark:bg-slate-900/500 text-white',
 };
 
 const operationLabel: Record<RuleOperation['type'], string> = {
@@ -68,10 +68,10 @@ interface CompactRuleVisualizationProps {
 export const CompactRuleVisualization: React.FC<CompactRuleVisualizationProps> = ({ rule, ruleId, displayName, isSelected = false, onSelect, classification }) => {
   const hasOperations = rule.operations.length > 0;
 
-  const baseClasses = 'w-full rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-900';
+  const baseClasses = 'w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-900';
   const selectedClasses = isSelected
     ? 'ring-2 ring-offset-2 ring-sky-500 dark:ring-offset-slate-900'
-    : 'hover:border-slate-300 dark:hover:border-slate-600';
+    : 'hover:border-slate-300 dark:border-slate-600 dark:hover:border-slate-600';
 
   const handleClick = () => {
     onSelect?.(ruleId);
@@ -88,7 +88,7 @@ export const CompactRuleVisualization: React.FC<CompactRuleVisualizationProps> =
         <span className="text-xs font-mono text-slate-500 dark:text-slate-400">k = {rule.rate}</span>
       </div>
       {classification && (
-        <div className="mb-4 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-xs text-slate-600 dark:border-slate-700/70 dark:bg-slate-800/60 dark:text-slate-300">
+        <div className="mb-4 rounded-md border border-slate-100 bg-slate-50 dark:bg-slate-900/50/70 p-2 text-xs text-slate-600 dark:text-slate-400 dark:border-slate-700/70 dark:bg-slate-800/60 dark:text-slate-300">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <RuleChangeBadges summary={classification} size="xs" />
           </div>
@@ -108,7 +108,7 @@ export const CompactRuleVisualization: React.FC<CompactRuleVisualizationProps> =
               {rule.context.map((molecule, idx) => (
                 <div
                   key={`${molecule.name}-${idx}`}
-                  className="rounded border border-slate-200 bg-slate-50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                  className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-2 text-xs dark:border-slate-700 dark:bg-slate-800"
                 >
                   <span className="font-semibold text-slate-700 dark:text-slate-200">{molecule.name}</span>
                   {molecule.components.length > 0 && (

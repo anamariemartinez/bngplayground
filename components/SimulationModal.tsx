@@ -65,14 +65,14 @@ export function SimulationModal({
   }, [model]);
 
   return (
-    <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl relative overflow-hidden">
+    <div className="fixed inset-0 bg-white dark:bg-slate-900/30 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl relative overflow-hidden">
 
         {/* Particle Animation Background */}
         {isSimulating && model && (
-          <div className="h-64 w-full mb-4 border border-slate-200 dark:border-slate-700 rounded overflow-hidden relative bg-slate-50 dark:bg-slate-900">
+          <div className="h-64 w-full mb-4 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded overflow-hidden relative bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900">
             <ParticleAnimation type={simulationMethod as 'nfsim' | 'ode' | 'ssa' | 'multiphase'} />
-            <div className="absolute bottom-2 right-2 text-xs text-slate-400 dark:text-slate-500 bg-white/80 dark:bg-slate-800/80 px-2 py-1 rounded">
+            <div className="absolute bottom-2 right-2 text-xs text-slate-400 dark:text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900/80 dark:bg-slate-800/80 px-2 py-1 rounded">
               {simulationMethod === 'nfsim' 
                 ? 'Network-Free Stochastic' 
                 : simulationMethod === 'ssa' 
@@ -102,15 +102,15 @@ export function SimulationModal({
         {/* Progress Stats */}
         {!hideNetworkStats && (
           <div className="grid grid-cols-3 gap-2 mb-3 text-center">
-            <div className="bg-slate-100 dark:bg-slate-700 rounded p-2">
+            <div className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 rounded p-2">
               <div className="text-lg font-bold text-teal-600 dark:text-teal-400">{speciesCount.toLocaleString()}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Species</div>
             </div>
-            <div className="bg-slate-100 dark:bg-slate-700 rounded p-2">
+            <div className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 rounded p-2">
               <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{reactionCount.toLocaleString()}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Reactions</div>
             </div>
-            <div className="bg-slate-100 dark:bg-slate-700 rounded p-2">
+            <div className="bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 rounded p-2">
               <div className="text-lg font-bold text-purple-600 dark:text-purple-400">{iteration}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">{isSimulating ? 'Step' : 'Iteration'}</div>
             </div>

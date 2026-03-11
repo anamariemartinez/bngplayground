@@ -45,7 +45,7 @@ export const JupyterExportTab: React.FC<JupyterExportTabProps> = ({ model, bnglC
 
   return (
     <div className="h-full flex flex-col gap-6 animate-in fade-in duration-500">
-      <Card className="p-8 bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700">
+      <Card className="p-8 bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700 dark:border-slate-700">
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 mb-2">
             <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -68,28 +68,28 @@ export const JupyterExportTab: React.FC<JupyterExportTabProps> = ({ model, bnglC
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-sm">1</div>
               <div>
                 <h4 className="font-semibold text-slate-800 dark:text-slate-200">Simulation & Plotting</h4>
-                <p className="text-sm text-slate-500">Full Matplotlib/Seaborn setup for publication-ready figures.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Full Matplotlib/Seaborn setup for publication-ready figures.</p>
               </div>
             </div>
             <div className="flex gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-sm">2</div>
               <div>
                 <h4 className="font-semibold text-slate-800 dark:text-slate-200">Global Optimization</h4>
-                <p className="text-sm text-slate-500">Scipy-based Parameter Estimation cell with loss function templates.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Scipy-based Parameter Estimation cell with loss function templates.</p>
               </div>
             </div>
             <div className="flex gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm">3</div>
               <div>
                 <h4 className="font-semibold text-slate-800 dark:text-slate-200">Math Analysis Suite</h4>
-                <p className="text-sm text-slate-500">Local sensitivity, FIM, and steady state root-finding templates.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Local sensitivity, FIM, and steady state root-finding templates.</p>
               </div>
             </div>
             <div className="flex gap-3">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">4</div>
               <div>
                 <h4 className="font-semibold text-slate-800 dark:text-slate-200">Scaling Experiments</h4>
-                <p className="text-sm text-slate-500">Scriptable parameter sweeps and data processing using Numpy/Pandas.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Scriptable parameter sweeps and data processing using Numpy/Pandas.</p>
               </div>
             </div>
           </div>
@@ -123,7 +123,7 @@ export const JupyterExportTab: React.FC<JupyterExportTabProps> = ({ model, bnglC
         </div>
       </Card>
       
-      <Card className="p-6 bg-slate-50 dark:bg-slate-900/50 border-dashed border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center">
+      <Card className="p-6 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-900/50 border-dashed border-2 border-slate-200 dark:border-slate-700 dark:border-slate-800 flex items-center justify-center">
         <div className="flex items-start gap-4 text-slate-500 dark:text-slate-400 max-w-lg">
           <svg className="w-6 h-6 mt-1 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

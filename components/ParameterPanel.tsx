@@ -174,7 +174,7 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({ code, onCodeChan
   if (localParams.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 p-3 mt-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+    <div className="flex flex-col gap-2 p-3 mt-4 border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 dark:bg-slate-800/50 rounded-lg">
       <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
         Parameter Sliders (Log Scale)
       </h3>
@@ -183,7 +183,7 @@ export const ParameterPanel: React.FC<ParameterPanelProps> = ({ code, onCodeChan
           <div key={`${param.name}-${i}`} className="flex flex-col gap-1">
             <div className="flex justify-between text-xs">
               <span className="font-medium text-slate-600 dark:text-slate-400">{param.name}</span>
-              <span className="font-mono text-slate-500">{param.value}</span>
+              <span className="font-mono text-slate-500 dark:text-slate-400">{param.value}</span>
             </div>
             <input
               type="range"

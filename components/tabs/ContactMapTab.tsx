@@ -105,12 +105,12 @@ export const ContactMapTab: React.FC<ContactMapTabProps> = ({ model, results, on
         <div className="flex h-full flex-col gap-3">
             {/* Rule Overlay Selector */}
             {ruleOverlays.length > 0 && (
-                <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700">
                     <label className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         Rule Overlay:
                     </label>
                     <select
-                        className="flex-1 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 py-1 truncate"
+                        className="flex-1 text-xs rounded border border-slate-300 dark:border-slate-600 dark:border-slate-600 bg-white dark:bg-slate-900 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 py-1 truncate"
                         value={selectedOverlayIndex ?? ''}
                         onChange={(e) => {
                             const val = e.target.value;
@@ -151,7 +151,7 @@ export const ContactMapTab: React.FC<ContactMapTabProps> = ({ model, results, on
 
             {/* Dynamic Contact Map Controls */}
             {snapshots.length > 0 && (
-                <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-3 bg-white dark:bg-slate-900 dark:bg-slate-900 p-2 rounded-md border border-slate-200 dark:border-slate-700 dark:border-slate-700">
                     <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                         <input
                             type="checkbox"
@@ -160,7 +160,7 @@ export const ContactMapTab: React.FC<ContactMapTabProps> = ({ model, results, on
                                 setDynamicEnabled(e.target.checked);
                                 if (e.target.checked) setSelectedOverlayIndex(null);
                             }}
-                            className="rounded border-slate-300 text-teal-600"
+                            className="rounded border-slate-300 dark:border-slate-600 text-teal-600"
                         />
                         Dynamic
                     </label>
@@ -168,7 +168,7 @@ export const ContactMapTab: React.FC<ContactMapTabProps> = ({ model, results, on
                         <>
                             <button
                                 onClick={handlePlayPause}
-                                className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                                className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                             >
                                 {isPlaying ? '⏸ Pause' : '▶ Play'}
                             </button>
@@ -193,7 +193,7 @@ export const ContactMapTab: React.FC<ContactMapTabProps> = ({ model, results, on
 
             {/* Contact Map */}
             <section className="h-full flex flex-col">
-                <div className="flex-1 min-h-[500px] border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden relative">
+                <div className="flex-1 min-h-[500px] border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-lg overflow-hidden relative">
                     <ContactMapViewer
                         contactMap={contactMap}
                         onSelectRule={onSelectRule}

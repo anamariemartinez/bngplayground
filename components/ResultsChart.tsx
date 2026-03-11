@@ -74,7 +74,7 @@ const ExternalLegend: React.FC<{
   highlightedSeries: Set<string>;
 }> = ({ series, visibleSpecies, onToggle, onHighlight, highlightedSeries }) => {
   return (
-    <div className="mt-4 max-h-48 overflow-y-auto border-t border-slate-200 dark:border-slate-700 pt-4">
+    <div className="mt-4 max-h-48 overflow-y-auto border-t border-slate-200 dark:border-slate-700 dark:border-slate-700 pt-4">
       <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 px-4">
         {series.map((item) => {
           const isVisible = visibleSpecies.has(item.name);
@@ -88,7 +88,7 @@ const ExternalLegend: React.FC<{
                 onHighlight(item.name);
               }}
               title="Double-click to isolate"
-              className={`flex items-center cursor-pointer transition-opacity ${!isVisible ? 'opacity-40' : isHighlighted ? 'opacity-100' : 'opacity-60'} hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1 -ml-1`}
+              className={`flex items-center cursor-pointer transition-opacity ${!isVisible ? 'opacity-40' : isHighlighted ? 'opacity-100' : 'opacity-60'} hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-800 rounded px-1 -ml-1`}
             >
               <div
                 style={{
@@ -122,7 +122,7 @@ const CustomLegend = (props: any) => {
             if (onHighlight) onHighlight(entry.value);
           }}
           title="Double-click to isolate"
-          className={`flex items-center cursor-pointer transition-opacity ${entry.inactive ? 'opacity-50' : 'opacity-100'} hover:bg-slate-50 dark:hover:bg-slate-800 rounded px-1 -ml-1`}
+          className={`flex items-center cursor-pointer transition-opacity ${entry.inactive ? 'opacity-50' : 'opacity-100'} hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-800 rounded px-1 -ml-1`}
         >
           <div style={{ width: 12, height: 12, backgroundColor: entry.color, marginRight: 6, borderRadius: '2px' }} />
           <span className="text-xs text-slate-700 dark:text-slate-300">{entry.value}</span>
@@ -420,7 +420,7 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
   if (!results || sourceData.length === 0) {
     return (
       <Card className="flex h-96 max-w-full items-center justify-center overflow-hidden">
-        <p className="text-slate-500">Run a simulation to see the results.</p>
+        <p className="text-slate-500 dark:text-slate-400">Run a simulation to see the results.</p>
       </Card>
     );
   }
@@ -523,6 +523,7 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
     if (abs >= 1e9) return (value / 1e9).toFixed(1) + 'B';
     if (abs >= 1e6) return (value / 1e6).toFixed(1) + 'M';
     if (abs >= 1e3) return (value / 1e3).toFixed(1) + 'K';
+    if (abs > 0 && abs < 1e-3) return value.toExponential(2);
     if (abs < 0.01) return value.toPrecision(2);
     
     // Check if it's an integer to avoid 1.00 or 2.00, but keep 1.50
@@ -581,7 +582,7 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-lg text-xs">
+        <div className="bg-white dark:bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:border-slate-700 p-3 rounded-lg shadow-lg text-xs">
           <p className="font-semibold text-slate-700 dark:text-slate-200 mb-2">
             {xAxisLabel}: {typeof label === 'number' ? formatAxisValue(label, 'x') : label}
           </p>
@@ -606,15 +607,15 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
     <Card className="max-w-full flex flex-col h-auto min-h-full">
       {/* Suffix Tabs (if multiple available) */}
       {availableSuffixes.length > 1 && (
-        <div className="flex gap-2 p-2 px-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/10">
+        <div className="flex gap-2 p-2 px-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50/50 dark:bg-slate-900/10">
           {availableSuffixes.map(sfx => (
             <button
               key={sfx}
               onClick={() => { setSelectedSuffix(sfx); setZoomHistory([]); setSelection(null); }}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
                 selectedSuffix === sfx
-                  ? 'bg-white border-blue-200 text-blue-700 shadow-sm dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300'
-                  : 'bg-transparent border-transparent text-slate-600 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:bg-slate-800/50'
+                  ? 'bg-white dark:bg-slate-900 border-blue-200 text-blue-700 shadow-sm dark:bg-blue-900/40 dark:border-blue-700 dark:text-blue-300'
+                  : 'bg-transparent border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:bg-slate-800/50'
               }`}
             >
               {sfx === '__default__' ? 'Default Context' : sfx}
@@ -625,7 +626,7 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
 
       <div 
         ref={setWrapperRef}
-        className="h-[500px] w-full relative" 
+        className="h-[500px] w-full relative text-slate-700 dark:text-slate-300" 
         style={{ width: '100%', height: 500, minHeight: 500 }}
       >
         {hasValidDimensions ? (
@@ -639,10 +640,10 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
             onMouseUp={handleMouseUp}
             onDoubleClick={handleDoubleClick}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.15)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.15} vertical={false} />
             <XAxis
               dataKey={timeKey}
-              label={{ value: xAxisLabel, position: 'bottom', offset: 12, fill: '#334155', fontSize: 13, fontWeight: 'bold' }}
+              label={{ value: xAxisLabel, position: 'bottom', offset: 12, fill: 'currentColor', fontSize: 13, fontWeight: 'bold' }}
               type="number"
               scale="linear"
               domain={currentDomain ? [currentDomain.x1, currentDomain.x2] : (xAxisScale === 'log' ? getTransformedDomain('time') : ['dataMin', 'dataMax'])}
@@ -650,24 +651,24 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
               allowDecimals={true}
               tickCount={7}
               tickMargin={6}
-              tick={{ fontSize: 11, fill: 'black' }}
-              tickLine={{ stroke: 'black' }}
-              axisLine={{ stroke: 'black' }}
+              tick={{ fontSize: 11, fill: 'currentColor' }}
+              tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+              axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
               tickFormatter={(value) => {
                 if (typeof value !== 'number') return value;
                 return formatAxisValue(value, 'x');
               }}
             />
             <YAxis
-              label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', fill: '#334155', fontSize: 13, fontWeight: 'bold' }}
+              label={{ value: yAxisLabel, angle: -90, position: 'insideLeft', fill: 'currentColor', fontSize: 13, fontWeight: 'bold', offset: 15, style: { textAnchor: 'middle' } }}
               scale="linear"
               domain={currentDomain ? [currentDomain.y1, currentDomain.y2] : (yAxisScale === 'log' ? getTransformedDomain('y') : [0, 'dataMax'])}
               allowDataOverflow={true}
               allowDecimals={true}
               tickCount={6}
-              tick={{ fontSize: 11, fill: 'black' }}
-              tickLine={{ stroke: 'black' }}
-              axisLine={{ stroke: 'black' }}
+              tick={{ fontSize: 11, fill: 'currentColor' }}
+              tickLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
+              axisLine={{ stroke: 'currentColor', strokeOpacity: 0.5 }}
               tickFormatter={(value) => {
                 if (typeof value !== 'number') return value;
                 return formatAxisValue(value, 'y');
@@ -753,15 +754,15 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
       {/* Toolbar */}
       <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
-          <div className="inline-flex gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-md">
+          <div className="inline-flex gap-1 p-0.5 bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800 rounded-md">
             <button
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${filterMode === 'all' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${filterMode === 'all' ? 'bg-white dark:bg-slate-900 dark:bg-slate-700 shadow-sm text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300'}`}
               onClick={() => setFilterMode('all')}
             >
               All
             </button>
             <button
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${filterMode === 'search' ? 'bg-white dark:bg-slate-700 shadow-sm text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}
+              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${filterMode === 'search' ? 'bg-white dark:bg-slate-900 dark:bg-slate-700 shadow-sm text-slate-700 dark:text-slate-200' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-300'}`}
               onClick={() => setFilterMode('search')}
             >
               Search
@@ -772,23 +773,23 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Filter series..."
-              className="ml-1 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-xs bg-transparent dark:text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+              className="ml-1 border border-slate-200 dark:border-slate-700 dark:border-slate-700 px-2 py-1 rounded text-xs bg-transparent dark:text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           )}
           
           {/* Scale toggles */}
-          <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-200 dark:border-slate-700 dark:border-slate-700">
             <span className="text-xs text-slate-500 dark:text-slate-400 mr-1">Scale:</span>
             <button
               onClick={handleXScaleChange}
-              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${xAxisScale === 'log' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${xAxisScale === 'log' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
               title="Toggle X-axis scale (resets zoom)"
             >
               X: {xAxisScale === 'log' ? 'Log' : 'Linear'}
             </button>
             <button
               onClick={handleYScaleChange}
-              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${yAxisScale === 'log' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
+              className={`px-2 py-1 text-xs font-medium rounded transition-colors ${yAxisScale === 'log' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-slate-100 dark:bg-slate-800/50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
               title="Toggle Y-axis scale (resets zoom)"
             >
               Y: {yAxisScale === 'log' ? 'Log' : 'Linear'}
@@ -800,7 +801,7 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
           {/* Reset View Button */}
           <button
             onClick={() => { setZoomHistory([]); setSelection(null); onVisibleSpeciesChange(new Set(speciesToPlot)); }}
-            className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 transition-colors"
           >
             Reset View
           </button>
@@ -809,7 +810,7 @@ export const ResultsChart: React.FC<ResultsChartProps> = ({ results, model, isNF
           <Dropdown
             direction="up"
             trigger={
-              <button className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-sm text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+              <button className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:border-slate-700 rounded-md shadow-sm text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:bg-slate-900/50 dark:hover:bg-slate-700 transition-colors">
                 <span>📥 Export</span>
                 <ChevronDownIcon className="w-3 h-3 text-slate-400" />
               </button>

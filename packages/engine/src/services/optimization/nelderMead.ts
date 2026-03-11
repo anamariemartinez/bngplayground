@@ -106,6 +106,11 @@ export async function nelderMead(
     // Check function-value convergence.
     const spread = fVal[n] - fVal[0];
     if (spread < ftol && spread >= 0) {
+      opts.onProgress?.({
+        iteration: iter, nEval,
+        bestValue: fVal[0],
+        bestX: Float64Array.from(simplex[0])
+      });
       return {
         x: [...simplex[0]], value: fVal[0], nEval, iterations: iter,
         converged: true, stopReason: 'converged_f'
@@ -114,6 +119,11 @@ export async function nelderMead(
 
     // Check parameter-space convergence.
     if (maxParamChange(simplex, n) < xtol) {
+      opts.onProgress?.({
+        iteration: iter, nEval,
+        bestValue: fVal[0],
+        bestX: Float64Array.from(simplex[0])
+      });
       return {
         x: [...simplex[0]], value: fVal[0], nEval, iterations: iter,
         converged: true, stopReason: 'converged_x'
@@ -166,9 +176,8 @@ export async function nelderMead(
 
     iter++;
 
-    // Emit progress every 5 iterations.
-    if (opts.onProgress && iter % 5 === 0) {
-      // Re-sort to get best.
+    // Emit progress every iteration so the SSE trace is never starved.
+    if (opts.onProgress) {
       const best = fVal.indexOf(Math.min(...fVal));
       opts.onProgress({
         iteration: iter, nEval,
