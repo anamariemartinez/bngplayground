@@ -637,11 +637,13 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
                 </h3>
               </div>
               <DataTable
-                headers={['Parameter', 'Best Estimate', '95% CI Half-Width (+/-)', 'Initial (Prior)']}
+                headers={['Parameter', 'Best Estimate', '95% Confidence Interval', 'Initial (Prior)']}
                 rows={result.parameters.map((p, i) => [
                   <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400" key={p}>{p}</span>,
                   <span className="font-mono text-xs" key={p}>{formatValue(result.posteriorMean[i])}</span>,
-                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400" key={p}>{formatValue(result.posteriorStd[i])}</span>,
+                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400" key={p}>
+                    [{formatValue(result.credibleIntervals[i]?.lower)} , {formatValue(result.credibleIntervals[i]?.upper)}]
+                  </span>,
                   <span className="font-mono text-xs text-slate-400" key={p}>{formatValue(result.priorMeans[i])}</span>,
                 ])}
               />

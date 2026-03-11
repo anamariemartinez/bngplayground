@@ -277,6 +277,9 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
     finalSse,
     bestParams,
     decode,
+    useLog,
+    paramBounds,
+    totalPoints,
     signal
   );
 
@@ -302,11 +305,17 @@ async function finiteDiffCI(
   f0: number,
   bestParams: number[],
   decode: (x: number[]) => number[],
+  useLog: boolean[],
+  paramBounds: ParamBounds[],
+  totalPoints: number,
   signal?: AbortSignal
 ): Promise<{ lower: number; upper: number }[]> {
   const n = xenc.length;
   const h = 1e-4;
   const variances: number[] = new Array(n).fill(0);
+
+  // Estimated variance of residuals: s^2 = SSE / (N - p)
+  const residualVar = f0 / Math.max(1, totalPoints - n);
 
   try {
     for (let i = 0; i < n; i++) {
@@ -316,8 +325,10 @@ async function finiteDiffCI(
       const fp = await f(xp);
       const fm = await f(xm);
       const hess = (fp - 2 * f0 + fm) / (h * h);
+      
+      // Variance from inverse Hessian: Var(y) = s^2 * [H/2]^-1 = 2 * s^2 / H
       if (hess > 1e-30) {
-        variances[i] = Math.max(0, f0 / hess);
+        variances[i] = (2.0 * residualVar) / hess;
       } else {
         variances[i] = bestParams[i] ** 2 * 0.25;
       }
@@ -327,10 +338,28 @@ async function finiteDiffCI(
   }
 
   return bestParams.map((v, i) => {
-    const std = Math.sqrt(variances[i]) * 1.96;
-    const fallback = Math.abs(v) * 0.5 || 0.5;
-    const half = isFinite(std) && std > 0 ? std : fallback;
-    return { lower: Math.max(0, v - half), upper: v + half };
+    const stdLog = Math.sqrt(variances[i]) * 1.96;
+    const isLog = useLog[i];
+    const b = paramBounds[i];
+
+    if (isLog) {
+      // Log-space CI: [v * exp(-std), v * exp(std)]
+      // This naturally stays positive and is symmetric in log-space.
+      const fallbackFactor = 2.0; // +/- 1 order of magnitude roughly
+      const half = isFinite(stdLog) && stdLog > 0 ? stdLog : Math.log(fallbackFactor);
+      
+      const lower = Math.max(b.min, v * Math.exp(-half));
+      const upper = Math.min(b.max, v * Math.exp(half));
+      return { lower, upper };
+    } else {
+      // Linear-space CI
+      const fallback = Math.abs(v) * 0.5 || 0.5;
+      const half = isFinite(stdLog) && stdLog > 0 ? stdLog : fallback;
+      
+      const lower = Math.max(b.min, v - half);
+      const upper = Math.min(b.max, v + half);
+      return { lower, upper };
+    }
   });
 }
 
