@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, extname, resolve } from 'path';
-import { BNGLParser } from '../packages/engine/src/services/graph/core/BNGLParser';
+import { parseBNGLStrict } from '../packages/engine/src/parser/BNGLParserWrapper';
 import { BNGXMLWriter } from '@bngplayground/engine';
+import { collectBnglFiles, resolveRuleHubRoot } from './helpers/rulehub';
 
 const NFSIM_MODELS_DIR = resolve(process.cwd(), 'src', 'wasm', 'nfsim', 'nfsim-src');
-const PUBLIC_MODELS_DIR = resolve(process.cwd(), 'public', 'models');
+const RULEHUB_RUNTIME_MODELS_DIR = join(resolveRuleHubRoot(process.cwd()), 'Contributed', 'BNGPlayground_PublicRuntime');
 
 // Recursively find all .bngl files in a directory
 function findBnglFiles(dir: string): string[] {
@@ -42,7 +43,7 @@ describe('Multi-Compartment Support - Model Repository Validation', () => {
 
     try {
         nfsimModels = findBnglFiles(NFSIM_MODELS_DIR);
-        publicModels = findBnglFiles(PUBLIC_MODELS_DIR);
+        publicModels = collectBnglFiles(RULEHUB_RUNTIME_MODELS_DIR);
     } catch (err) {
         console.warn('Could not scan model directories:', err);
     }
@@ -53,7 +54,7 @@ describe('Multi-Compartment Support - Model Repository Validation', () => {
     it(`finds BNGL models (found ${modelCount} models)`, () => {
         expect(modelCount).toBeGreaterThan(0);
         console.log(`Found ${nfsimModels.length} models in NFsim source`);
-        console.log(`Found ${publicModels.length} models in public/models`);
+        console.log(`Found ${publicModels.length} models in RuleHub runtime examples`);
     });
 
     it('parses all models without crashing the parser', () => {
@@ -78,7 +79,7 @@ describe('Multi-Compartment Support - Model Repository Validation', () => {
 
                 // Try to parse
                 try {
-                    BNGLParser.parse(content);
+                    parseBNGLStrict(content);
                     parsedCount++;
                 } catch (parseErr: any) {
                     // Some models may have syntax we don't support yet - that's OK
@@ -119,7 +120,7 @@ describe('Multi-Compartment Support - Model Repository Validation', () => {
                 const content = readFileSync(modelPath, 'utf-8');
 
                 try {
-                    const model = BNGLParser.parse(content);
+                    const model = parseBNGLStrict(content);
 
                     // Try to generate XML
                     try {
