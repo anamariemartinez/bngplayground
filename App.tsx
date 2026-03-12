@@ -88,6 +88,7 @@ function App() {
   const [loadedModelName, setLoadedModelName] = useState<string | null>(null);
   const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
   const [defaultCatalogModelId, setDefaultCatalogModelId] = useState<string | null>(null);
+  const [editorResetKey, setEditorResetKey] = useState<number>(0);
 
   useEffect(() => {
     const unsub = bnglService.onProgress((payload) => {
@@ -222,7 +223,7 @@ function App() {
     parseAbortRef.current = controller;
     // prefer the override if it's a string, otherwise use latest state value.
     // this handles cases where it's used as an onClick handler (receiving an event).
-    const source = (typeof codeOverride === 'string') ? codeOverride : code;
+    const source = (typeof codeOverride === 'string') ? codeOverride : codeRef.current;
     try {
       const parsedModel = await bnglService.parse(source, {
         signal: controller.signal,
@@ -264,7 +265,7 @@ function App() {
         parseAbortRef.current = null;
       }
     }
-  }, [code]);
+  }, []);
 
   const handleSimulate = useCallback(async (options: SimulationOptions, modelOverride?: BNGLModel) => {
     const targetModel = modelOverride || model;
@@ -621,6 +622,8 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
+    console.log('[App] initializeModel effect run');
+
     const initializeModel = async () => {
       try {
         const catalog = await loadModelCatalog();
@@ -784,14 +787,20 @@ function App() {
     console.log('[App] handleCodeChange called:', {
       codeLength: newCode.length,
       codePreview: newCode.substring(0, 200),
+      firstLine: newCode.split('\n')[0] || '',
       hasSimulateNf: newCode.includes('method=>"nf"'),
-      hasSimulateOde: newCode.includes('method=>"ode"')
+      hasSimulateOde: newCode.includes('method=>"ode"'),
+      previousCodeLength: codeRef.current.length,
+      previousLoadedModelId: loadedModelId,
+      previousLoadedModelName: loadedModelName,
+      nextEditorResetKey: editorResetKey + 1,
     });
     setCode(newCode);
     setModel(null);
     setResults(null);
     setValidationWarnings([]);
     setEditorMarkers([]);
+    setEditorResetKey((prev) => prev + 1);
 
     if (loadedModelId) {
       const example = findExampleById(loadedModelId);
@@ -1018,8 +1027,10 @@ function App() {
                     isCollapsed={splitPosition <= 5}
                     onExpand={() => setSplitPosition(35)}
                     onRunQuick={handleQuickRun}
+                    editorResetKey={editorResetKey}
                     code={code}
                     onCodeChange={handleEditorCodeChange}
+                    onLoadCode={handleCodeChange}
                     onParse={handleParse}
                     onSimulate={handleSimulate}
                     isSimulating={isSimulating}

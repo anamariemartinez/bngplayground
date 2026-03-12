@@ -24,6 +24,13 @@ declare const window: any;
 
 let monacoLoadPromise: Promise<any> | null = null;
 
+const DEBUG_MONACO_SYNC = (import.meta as any)?.env?.DEV;
+
+function previewFirstLine(value: string, maxLen = 120): string {
+  const firstLine = value.split('\n')[0] ?? '';
+  return firstLine.length > maxLen ? `${firstLine.slice(0, maxLen)}...` : firstLine;
+}
+
 function loadMonaco() {
   if (monacoLoadPromise) {
     return monacoLoadPromise;
@@ -68,6 +75,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
   const markersRef = useRef<EditorMarker[]>(markers);
   const valueRef = useRef<string>(value);
   const onRunRef = useRef(onRun);
+  const lastSyncedValueRef = useRef<string>(value);
 
   const [effectiveTheme, setEffectiveTheme] = React.useState<'light' | 'dark'>(theme);
 
@@ -91,6 +99,12 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
 
   useEffect(() => {
     valueRef.current = value;
+    if (DEBUG_MONACO_SYNC) {
+      console.log('[MonacoEditor] prop:value changed', {
+        length: value.length,
+        firstLine: previewFirstLine(value),
+      });
+    }
   }, [value]);
 
   useEffect(() => {
@@ -296,6 +310,13 @@ useEffect(() => {
         scrollBeyondLastLine: false,
       });
 
+      if (DEBUG_MONACO_SYNC) {
+        console.log('[MonacoEditor] editor created', {
+          initialLength: valueRef.current.length,
+          initialFirstLine: previewFirstLine(valueRef.current),
+        });
+      }
+
       // Configure BNGL comment style so toggle-comment uses '#'
       monaco.languages.setLanguageConfiguration('bngl', {
         comments: {
@@ -377,6 +398,13 @@ useEffect(() => {
       editorInstanceRef.current = editor;
 
       contentListener = editor.onDidChangeModelContent(() => {
+        if (DEBUG_MONACO_SYNC) {
+          const current = editor.getValue();
+          console.log('[MonacoEditor] onDidChangeModelContent', {
+            length: current.length,
+            firstLine: previewFirstLine(current),
+          });
+        }
         onChangeRef.current(editor.getValue());
       });
     })
@@ -424,11 +452,61 @@ useEffect(() => {
 // Effect 2: Sync external value changes
 useEffect(() => {
   const editor = editorInstanceRef.current;
-  if (editor && editor.getValue() !== value) {
-    const model = editor.getModel();
-    if (model) {
-      model.setValue(value);
+  if (!editor) {
+    if (DEBUG_MONACO_SYNC) {
+      console.log('[MonacoEditor] sync skipped: editor not ready', {
+        incomingLength: value.length,
+        incomingFirstLine: previewFirstLine(value),
+      });
     }
+    return;
+  }
+
+  const currentValue = editor.getValue();
+  if (currentValue === value) {
+    if (DEBUG_MONACO_SYNC) {
+      console.log('[MonacoEditor] sync no-op: editor already matches prop', {
+        length: value.length,
+        firstLine: previewFirstLine(value),
+      });
+    }
+    return;
+  }
+
+  const model = editor.getModel();
+  if (!model) {
+    if (DEBUG_MONACO_SYNC) {
+      console.warn('[MonacoEditor] sync failed: missing model', {
+        editorLength: currentValue.length,
+        propLength: value.length,
+      });
+    }
+    return;
+  }
+
+  if (DEBUG_MONACO_SYNC) {
+    console.log('[MonacoEditor] applying external sync', {
+      editorLength: currentValue.length,
+      propLength: value.length,
+      editorFirstLine: previewFirstLine(currentValue),
+      propFirstLine: previewFirstLine(value),
+      previouslySyncedLength: lastSyncedValueRef.current.length,
+    });
+  }
+
+  model.pushEditOperations([], [{
+    range: model.getFullModelRange(),
+    text: value,
+  }], () => null);
+
+  const after = editor.getValue();
+  lastSyncedValueRef.current = after;
+  if (DEBUG_MONACO_SYNC) {
+    console.log('[MonacoEditor] sync applied result', {
+      afterLength: after.length,
+      afterFirstLine: previewFirstLine(after),
+      matchesProp: after === value,
+    });
   }
 }, [value]);
 

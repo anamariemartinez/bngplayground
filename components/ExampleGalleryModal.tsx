@@ -45,6 +45,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const [bioModelsImportError, setBioModelsImportError] = useState<string | null>(null);
   const [bioModelsLoadingId, setBioModelsLoadingId] = useState<string | null>(null);
 
@@ -116,6 +117,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
     if (!isOpen) {
       setFocusedExample(null);
       setSemanticResults(null);
+      setModelLoadError(null);
       setBioModelsImportError(null);
       setBioModelsLoadingId(null);
       return;
@@ -124,6 +126,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
     let cancelled = false;
     setIsCatalogLoading(true);
     setCatalogError(null);
+    setModelLoadError(null);
     setSearchTerm('');
     setSemanticResults(null);
 
@@ -175,6 +178,12 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                 {catalogError && (
                   <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
                     {catalogError}
+                  </div>
+                )}
+
+                {modelLoadError && (
+                  <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200">
+                    {modelLoadError}
                   </div>
                 )}
 
@@ -270,6 +279,7 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                     <button
                       onClick={async () => {
                         if (loadingId) return; // prevent double-click
+                        setModelLoadError(null);
                         setLoadingId(example.id);
                         try {
                           // Use embedded code if present (fastest), otherwise fetch
@@ -283,6 +293,8 @@ export const ExampleGalleryModal: React.FC<ExampleGalleryModalProps> = ({ isOpen
                           onSelect(code, toTitleCase(example.name), example.id);
                         } catch (err) {
                           console.error('[ExampleGalleryModal] Failed to load model:', example.id, err);
+                          const detail = err instanceof Error ? err.message : String(err);
+                          setModelLoadError(`Failed to load ${toTitleCase(example.name)}. ${detail}`);
                         } finally {
                           setLoadingId(null);
                         }

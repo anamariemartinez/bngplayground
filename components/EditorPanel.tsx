@@ -72,7 +72,9 @@ import { getSimulationOptionsFromParsedModel } from '@bngplayground/engine';
 interface EditorPanelProps {
   code: string;
   onCodeChange: (code: string) => void;
-  onParse: () => void;
+  onLoadCode?: (code: string) => void;
+  editorResetKey?: number;
+  onParse: (codeOverride?: string) => void | Promise<unknown>;
   onSimulate: (options: SimulationOptions) => void;
   isSimulating: boolean;
   modelExists: boolean;
@@ -104,6 +106,8 @@ interface EditorPanelProps {
 export const EditorPanel: React.FC<EditorPanelProps> = ({
   code,
   onCodeChange,
+  onLoadCode,
+  editorResetKey,
   onParse,
   onSimulate,
 
@@ -159,22 +163,38 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const reader = new FileReader();
     reader.onload = (e) => {
       const newCode = e.target?.result as string;
-      onCodeChange(newCode);
+      console.log('[EditorPanel] Local BNGL file loaded', {
+        fileName: file.name,
+        length: newCode?.length ?? 0,
+        firstLine: (newCode || '').split('\n')[0] || '',
+        usesOnLoadCode: Boolean(onLoadCode),
+      });
+      if (onLoadCode) onLoadCode(newCode);
+      else onCodeChange(newCode);
       // Clear model name when loading from file
       onModelNameChange?.(file.name.replace(/\.bngl$/i, ''));
       onModelIdChange?.(null);
       // automatically parse newly loaded file
-      onParse();
+      void onParse(newCode);
     };
     reader.readAsText(file);
   };
 
   const handleLoadExample = (exampleCode: string, modelName?: string, modelId?: string) => {
-    onCodeChange(exampleCode);
+    console.log('[EditorPanel] handleLoadExample', {
+      modelId,
+      modelName,
+      length: exampleCode.length,
+      firstLine: exampleCode.split('\n')[0] || '',
+      usesOnLoadCode: Boolean(onLoadCode),
+      isCollapsed: Boolean(isCollapsed),
+    });
+    if (onLoadCode) onLoadCode(exampleCode);
+    else onCodeChange(exampleCode);
     onModelNameChange?.(modelName ?? null);
     onModelIdChange?.(modelId ?? null);
     setIsGalleryOpen(false);
-    onParse();
+    void onParse(exampleCode);
     if (isCollapsed) onExpand?.();
   };
 
@@ -290,6 +310,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
         <div className="relative flex-1 min-h-[24rem] overflow-hidden">
           <MonacoEditor
+            key={editorResetKey ?? 0}
             language="bngl"
             value={code}
             onChange={(value) => onCodeChange(value || '')}
