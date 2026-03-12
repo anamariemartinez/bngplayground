@@ -366,7 +366,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               <span className="md:hidden">✨</span>
             </Button>
 
-            <Button onClick={onParse} variant="secondary" className="h-9 px-4 font-bold">Parse</Button>
+            <Button onClick={() => onParse()} variant="secondary" className="h-9 px-4 font-bold">Parse</Button>
 
             <input
               type="file"
