@@ -71,6 +71,29 @@ describe('JITCompiler Service', () => {
              expect(dydt[0]).toBeCloseTo(-18);
              expect(dydt[1]).toBeCloseTo(9);
         });
+
+        it('should update parameter-backed JIT functions without recompiling', () => {
+             const compiled = jitCompiler.compile([
+                 {
+                     reactantIndices: [0],
+                     reactantStoich: [1],
+                     productIndices: [1],
+                     productStoich: [1],
+                     rateConstant: 'k1'
+                 }
+             ], 2, { k1: 0.5 });
+
+             const y = new Float64Array([4, 0]);
+             const dydt = new Float64Array(2);
+             compiled.evaluate(0, y, dydt);
+             expect(dydt[0]).toBeCloseTo(-2);
+             expect(dydt[1]).toBeCloseTo(2);
+
+             compiled.updateParameters?.({ k1: 2 });
+             compiled.evaluate(0, y, dydt);
+             expect(dydt[0]).toBeCloseTo(-8);
+             expect(dydt[1]).toBeCloseTo(8);
+        });
         
         it('should compile degradation A -> 0', () => {
              const rxns = [{
@@ -86,6 +109,28 @@ describe('JITCompiler Service', () => {
              const dydt = new Float64Array(1);
              compiled.evaluate(0, y, dydt);
              expect(dydt[0]).toBeCloseTo(-10);
+        });
+
+        it('should compile observables into a reusable Float64Array', () => {
+             const compiled = jitCompiler.compileObservables([
+                 {
+                     name: 'A_total',
+                     indices: [0, 1],
+                     coefficients: [1, 2],
+                     volumes: [2, 3]
+                 },
+                 {
+                     name: 'B_free',
+                     indices: [2],
+                     coefficients: [1]
+                 }
+             ], 3, true);
+
+             const output = new Float64Array(2);
+             compiled.evaluate(new Float64Array([4, 5, 6]), output, new Float64Array([2, 3, 4]));
+
+             expect(output[0]).toBeCloseTo((4 * 2) + (5 * 3 * 2));
+             expect(output[1]).toBeCloseTo(24);
         });
         
         it('should compile synthesis 0 -> A', () => {
@@ -115,6 +160,29 @@ describe('JITCompiler Service', () => {
 
                expect(() => jitCompiler.compile(rxns as any, 1)).toThrow(/Invalid reactant species index/);
                expect(jitCompiler.compileToByteCode(rxns as any, 1)).toBeNull();
+           });
+
+           it('should compile functional bytecode from species names and observables', () => {
+               const bytecode = jitCompiler.compileToByteCode([
+                   {
+                       reactantIndices: [0],
+                       reactantStoich: [1],
+                       productIndices: [1],
+                       productStoich: [1],
+                       rateConstant: 'Vmax * A / (Km + A)'
+                   }
+               ], 2, { Vmax: 3, Km: 2 }, undefined, undefined, [
+                   {
+                       name: 'A_total',
+                       indices: [0],
+                       coefficients: [1]
+                   }
+               ], ['A', 'B']);
+
+               expect(bytecode).not.toBeNull();
+               expect(bytecode?.exprBytecode.length).toBeGreaterThan(0);
+               expect(bytecode?.exprBytecodeOffsets[1]).toBeGreaterThan(0);
+               expect(bytecode?.requiresParameterRebuild).toBe(true);
            });
         
         // Property / Fuzz Testing

@@ -238,6 +238,16 @@ export interface SerializedWorkerError {
     details?: Record<string, unknown>;
 }
 
+export interface SharedSimulationOutputDescriptor {
+    slot: number;
+    runCount: number;
+    rowCount: number;
+    columnCount: number;
+    headers: string[];
+    valuesBuffer: SharedArrayBuffer;
+    completionBuffer: SharedArrayBuffer;
+}
+
 export interface ExtendedError extends Error {
     stack?: string;
     cause?: unknown;
@@ -248,7 +258,7 @@ export type WorkerRequest =
     | { id: number; type: 'simulate'; payload: { model: BNGLModel; options: SimulationOptions } }
     | { id: number; type: 'cache_model'; payload: { model: BNGLModel } }
     | { id: number; type: 'release_model'; payload: { modelId: number } }
-    | { id: number; type: 'simulate'; payload: { modelId: number; parameterOverrides?: Record<string, number>; options: SimulationOptions } }
+    | { id: number; type: 'simulate'; payload: { modelId: number; parameterOverrides?: Record<string, number>; options: SimulationOptions; sharedOutput?: SharedSimulationOutputDescriptor } }
     | { id: number; type: 'generate_network'; payload: { model: BNGLModel; options?: NetworkGeneratorOptions } }
     | { id: number; type: 'atomize'; payload: string }
     | { id: number; type: 'cancel'; payload: { targetId: number } }
@@ -260,6 +270,7 @@ export type WorkerResponse =
     | { id: number; type: 'atomize_success'; payload: AtomizerResult }
     | { id: number; type: 'atomize_error'; payload: SerializedWorkerError }
     | { id: number; type: 'simulate_success'; payload: SimulationResults }
+    | { id: number; type: 'simulate_shared_success'; payload: { slot: number } }
     | { id: number; type: 'cache_model_success'; payload: { modelId: number } }
     | { id: -1; type: 'worker_internal_error'; payload: SerializedWorkerError }
     | { id: number; type: 'cache_model_error'; payload: SerializedWorkerError }

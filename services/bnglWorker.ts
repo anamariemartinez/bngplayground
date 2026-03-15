@@ -9,6 +9,7 @@ import type {
   SerializedWorkerError,
   NetworkGeneratorOptions,
   SimulationResults,
+  SharedSimulationOutputDescriptor,
   NetworkAnalysisPayload,
 } from '../types';
 
@@ -255,10 +256,50 @@ const isSimulateModelPayload = (p: unknown): p is { model: BNGLModel; options: S
 
 const isSimulateModelIdPayload = (
   p: unknown
-): p is { modelId: number; parameterOverrides?: Record<string, number>; options: SimulationOptions } => {
+): p is { modelId: number; parameterOverrides?: Record<string, number>; options: SimulationOptions; sharedOutput?: SharedSimulationOutputDescriptor } => {
   if (!isRecord(p)) return false;
   const idVal = (p as Record<string, unknown>).modelId;
   return 'modelId' in p && typeof idVal === 'number' && 'options' in p;
+};
+
+const isSharedSimulationOutputDescriptor = (value: unknown): value is SharedSimulationOutputDescriptor => {
+  if (!isRecord(value)) return false;
+  return typeof value.slot === 'number'
+    && typeof value.runCount === 'number'
+    && typeof value.rowCount === 'number'
+    && typeof value.columnCount === 'number'
+    && Array.isArray(value.headers)
+    && value.valuesBuffer instanceof SharedArrayBuffer
+    && value.completionBuffer instanceof SharedArrayBuffer;
+};
+
+const writeResultsToSharedOutput = (
+  results: SimulationResults,
+  descriptor: SharedSimulationOutputDescriptor
+) => {
+  if (results.data.length !== descriptor.rowCount) {
+    throw new Error(`Shared ensemble row count mismatch: expected ${descriptor.rowCount}, received ${results.data.length}`);
+  }
+
+  if (results.headers.length !== descriptor.columnCount) {
+    throw new Error(`Shared ensemble column count mismatch: expected ${descriptor.columnCount}, received ${results.headers.length}`);
+  }
+
+  const values = new Float64Array(descriptor.valuesBuffer);
+  const completion = new Int32Array(descriptor.completionBuffer);
+  const runStride = descriptor.rowCount * descriptor.columnCount;
+  let offset = descriptor.slot * runStride;
+
+  for (let rowIdx = 0; rowIdx < descriptor.rowCount; rowIdx++) {
+    const row = results.data[rowIdx] ?? {};
+    for (let colIdx = 0; colIdx < descriptor.columnCount; colIdx++) {
+      const header = descriptor.headers[colIdx];
+      const rawValue = row[header];
+      values[offset++] = typeof rawValue === 'number' ? rawValue : Number(rawValue ?? Number.NaN);
+    }
+  }
+
+  Atomics.store(completion, descriptor.slot, 1);
 };
 
 const isCacheModelPayload = (p: unknown): p is { model: BNGLModel } => {
@@ -468,6 +509,10 @@ if (typeof ctx.addEventListener === 'function') {
             throw new Error('Simulation payload incomplete');
           }
 
+          const sharedOutput = isRecord(p) && 'sharedOutput' in p && isSharedSimulationOutputDescriptor((p as Record<string, unknown>).sharedOutput)
+            ? (p as { sharedOutput: SharedSimulationOutputDescriptor }).sharedOutput
+            : undefined;
+
           // Auto-generate network if model has reaction rules but no reactions
           const hasRules = (model.reactionRules && model.reactionRules.length > 0);
           const hasReactions = (model.reactions && model.reactions.length > 0);
@@ -666,22 +711,28 @@ if (typeof ctx.addEventListener === 'function') {
             }
           })();
 
-          const response: WorkerResponse = { id, type: 'simulate_success', payload: results };
-          try {
-            ctx.postMessage(response);
-          } catch (postError: any) {
-            const msg = postError?.message ?? String(postError ?? '');
-            if (/Data cannot be cloned|out of memory/i.test(msg)) {
-              console.warn('[Worker] simulate_success payload too large; retrying without speciesData payload');
-              const slimResults = {
-                ...(results as any),
-                speciesHeaders: undefined,
-                speciesData: undefined
-              };
-              const slimResponse: WorkerResponse = { id, type: 'simulate_success', payload: slimResults };
-              ctx.postMessage(slimResponse);
-            } else {
-              throw postError;
+          if (sharedOutput) {
+            writeResultsToSharedOutput(results, sharedOutput);
+            const response: WorkerResponse = { id, type: 'simulate_shared_success', payload: { slot: sharedOutput.slot } };
+            safePostMessage(response);
+          } else {
+            const response: WorkerResponse = { id, type: 'simulate_success', payload: results };
+            try {
+              ctx.postMessage(response);
+            } catch (postError: any) {
+              const msg = postError?.message ?? String(postError ?? '');
+              if (/Data cannot be cloned|out of memory/i.test(msg)) {
+                console.warn('[Worker] simulate_success payload too large; retrying without speciesData payload');
+                const slimResults = {
+                  ...(results as any),
+                  speciesHeaders: undefined,
+                  speciesData: undefined
+                };
+                const slimResponse: WorkerResponse = { id, type: 'simulate_success', payload: slimResults };
+                ctx.postMessage(slimResponse);
+              } else {
+                throw postError;
+              }
             }
           }
         } catch (error) {

@@ -7,6 +7,11 @@ import { handleValidateModel } from '../src/handlers/validateModel';
 import { handleGetContactMap } from '../src/handlers/getContactMap';
 import { handleFitParameters } from '../src/handlers/fitParameters';
 import { handleDiagnose } from '../src/handlers/diagnose';
+import { handleComposeModel } from '../src/handlers/composeModel';
+import { handleEditModel } from '../src/handlers/editModel';
+import { handleDiagnoseModel } from '../src/handlers/diagnoseModel';
+import { handleExplainModel } from '../src/handlers/explainModel';
+import { handleSuggestFix } from '../src/handlers/suggestFix';
 
 const simpleModel = `
 begin parameters
@@ -148,5 +153,77 @@ describe('MCP Server Tools Functional Validation', () => {
         expect(result.structuredContent.stiffness).toBeDefined();
         expect(result.structuredContent.estimation).toBeDefined();
         expect(result.structuredContent.estimation.rules).toBe(2);
+    });
+
+    it('should compose model from natural language statements (compose_model)', async () => {
+        const result = await handleComposeModel({
+            statements: ['A binds B with rate k_bind']
+        });
+        expect(result.structuredContent.code).toContain('begin reaction rules');
+        expect(result.structuredContent.rules.length).toBeGreaterThan(0);
+        expect(result.structuredContent.analysis.recognizedCount).toBe(1);
+        expect(result.structuredContent.molecules.length).toBeGreaterThan(0);
+        expect(result.structuredContent.confirmation).toContain('Parsed 1/1 statements');
+    });
+
+    it('should compose model using grammar synonyms (compose_model associates)', async () => {
+        const result = await handleComposeModel({
+            statements: ['EGF associates with EGFR with rate kon']
+        });
+        expect(result.structuredContent.analysis.recognizedCount).toBe(1);
+        expect(result.structuredContent.rules.length).toBeGreaterThan(0);
+    });
+
+    it('should edit model with structured operations (edit_model)', async () => {
+        const result = await handleEditModel({
+            code: simpleModel,
+            operations: [
+                { action: 'set_parameter', name: 'k1', value: 0.2 },
+                { action: 'add_observable', name: 'A_total', type: 'Molecules', pattern: 'A(b)' }
+            ]
+        });
+        expect(result.structuredContent.code).toContain('k1 0.2');
+        expect(result.structuredContent.validation.valid).toBe(true);
+        expect(result.structuredContent.summary.length).toBe(2);
+    });
+
+    it('should run deep model diagnosis (diagnose_model)', async () => {
+        const result = await handleDiagnoseModel({
+            code: simpleModel,
+            t_end: 1,
+            n_steps: 10,
+            n_samples: 8,
+            n_bootstrap: 10,
+            max_parameters: 2,
+        });
+        expect(result.structuredContent.structure).toBeDefined();
+        expect(result.structuredContent.stiffness).toBeDefined();
+        expect(result.structuredContent.dynamics).toBeDefined();
+        expect(result.structuredContent.sobol).toBeDefined();
+        expect(result.structuredContent.fim).toBeDefined();
+        expect(Array.isArray(result.structuredContent.mechanisticCausalTrace)).toBe(true);
+        expect(result.structuredContent.parameterSelection).toBeDefined();
+        expect(result.structuredContent.parameterSelection.analyzed).toBeLessThanOrEqual(2);
+        const firstTrace = result.structuredContent.mechanisticCausalTrace[0];
+        if (firstTrace) {
+            expect(firstTrace.topologyPath || firstTrace.targetObservable).toBeDefined();
+        }
+    });
+
+    it('should explain model in narrative form (explain_model)', async () => {
+        const result = await handleExplainModel({ code: simpleModel });
+        expect(result.structuredContent.summary).toContain('Model contains');
+        expect(Array.isArray(result.structuredContent.sections)).toBe(true);
+        expect(result.structuredContent.sections.length).toBeGreaterThan(0);
+    });
+
+    it('should suggest fixes and optional autocorrected code (suggest_fix)', async () => {
+        const modelWithoutObservables = simpleModel.replace(/begin observables[\s\S]*?end observables/m, 'begin observables\nend observables');
+        const result = await handleSuggestFix({
+            code: modelWithoutObservables,
+            include_auto_corrected_code: true,
+        });
+        expect(result.structuredContent.fixes.length).toBeGreaterThan(0);
+        expect(result.structuredContent.auto_corrected_code).toContain('begin observables');
     });
 });

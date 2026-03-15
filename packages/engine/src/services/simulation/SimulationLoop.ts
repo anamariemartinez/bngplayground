@@ -19,7 +19,7 @@ import { countPatternMatches, isSpeciesMatch, isFunctionalRateExpr } from '../pa
 import { clearAllEvaluatorCaches, evaluateFunctionalRate, evaluateExpressionOrParse, loadEvaluator } from './ExpressionEvaluator';
 import { analyzeModelStiffness, getOptimalCVODEConfig, detectModelPreset } from './cvodeStiffConfig';
 import { getFeatureFlags } from '../../featureFlags';
-import { jitCompiler } from '../analysis/JITCompiler';
+import { jitCompiler, type JITCompiledFunction, type NetworkByteCode } from '../analysis/JITCompiler';
 import { createReducedSystem, findConservationLaws } from '../analysis/ConservationLaws';
 import { SeededRandom } from '../../utils/random';
 // import * as fs from 'node:fs';
@@ -38,6 +38,48 @@ interface ConcreteReaction {
   statFactor: number;
   totalRate?: boolean;
   ruleName?: string;
+}
+
+function cloneModelForSimulation(inputModel: BNGLModel): BNGLModel {
+  return {
+    ...inputModel,
+    parameters: { ...(inputModel.parameters || {}) },
+    moleculeTypes: (inputModel.moleculeTypes || []).map((moleculeType) => ({
+      ...moleculeType,
+      components: [...moleculeType.components]
+    })),
+    species: (inputModel.species || []).map((species) => ({ ...species })),
+    observables: (inputModel.observables || []).map((observable) => ({ ...observable })),
+    actions: inputModel.actions?.map((action) => ({ ...action, args: { ...(action.args || {}) } })),
+    reactions: inputModel.reactions?.map((reaction) => ({
+      ...reaction,
+      reactants: [...reaction.reactants],
+      products: [...reaction.products],
+      productStoichiometries: reaction.productStoichiometries ? [...reaction.productStoichiometries] : undefined
+    })),
+    reactionRules: inputModel.reactionRules?.map((rule) => ({
+      ...rule,
+      reactants: [...rule.reactants],
+      products: [...rule.products],
+      constraints: rule.constraints ? [...rule.constraints] : undefined
+    })),
+    compartments: inputModel.compartments?.map((compartment) => ({ ...compartment })),
+    functions: inputModel.functions?.map((fn) => ({ ...fn, args: [...fn.args] })),
+    networkOptions: inputModel.networkOptions
+      ? {
+        ...inputModel.networkOptions,
+        maxStoich: typeof inputModel.networkOptions.maxStoich === 'object' && inputModel.networkOptions.maxStoich !== null
+          ? { ...inputModel.networkOptions.maxStoich }
+          : inputModel.networkOptions.maxStoich
+      }
+      : undefined,
+    simulationOptions: inputModel.simulationOptions ? { ...inputModel.simulationOptions } : undefined,
+    simulationPhases: inputModel.simulationPhases?.map((phase) => ({ ...phase })),
+    concentrationChanges: inputModel.concentrationChanges?.map((change) => ({ ...change })),
+    parameterChanges: inputModel.parameterChanges?.map((change) => ({ ...change })),
+    paramExpressions: inputModel.paramExpressions ? { ...inputModel.paramExpressions } : undefined,
+    energyPatterns: inputModel.energyPatterns?.map((pattern) => ({ ...pattern }))
+  };
 }
 
 /**
@@ -109,8 +151,8 @@ export async function simulate(
   // STRICT PARITY: Output time grid management
   // ... (Managed by toBngGridTime)
 
-  // 1. Prepare Model State (Deep Copy to avoid mutating input across phases if reused)
-  const model = JSON.parse(JSON.stringify(inputModel)) as BNGLModel;
+  // 1. Prepare Model State without the JSON deep-clone hot-path.
+  const model = cloneModelForSimulation(inputModel);
   let loggedVDephos = false;
 
   const numSpecies = model.species.length;
@@ -600,8 +642,32 @@ export async function simulate(
 
     const getTotalDataLength = () => Object.values(dataBySuffix).reduce((sum, arr) => sum + arr.length, 0);
 
-    const evaluateObservablesFast = (currentState: Float64Array) => {
-      const obsValues: Record<string, number> = {};
+    const observableNames = concreteObservables.map((obs) => obs.name);
+    const observableValuesBuffer = new Float64Array(concreteObservables.length);
+    const observableValuesRecord = Object.fromEntries(
+      observableNames.map((name) => [name, 0])
+    ) as Record<string, number>;
+    const compiledObservableEvaluator = concreteObservables.length > 0
+      ? (() => {
+          try {
+            return jitCompiler.compileObservables(concreteObservables as Array<{
+              name: string;
+              indices: Int32Array | number[];
+              coefficients: Float64Array | number[];
+              volumes?: Float64Array | number[];
+            }>, numSpecies, isOde);
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+
+    const evaluateObservablesIntoBuffer = (currentState: Float64Array) => {
+      if (compiledObservableEvaluator) {
+        compiledObservableEvaluator.evaluate(currentState, observableValuesBuffer, speciesVolumes);
+        return observableValuesBuffer;
+      }
+
       for (let i = 0; i < concreteObservables.length; i++) {
         const obs = concreteObservables[i];
         let sum = 0;
@@ -615,9 +681,18 @@ export async function simulate(
           const amount = isOde ? (val * termVolume) : val;
           sum += amount * obs.coefficients[j];
         }
-        obsValues[obs.name] = sum;
+        observableValuesBuffer[i] = sum;
       }
-      return obsValues;
+
+      return observableValuesBuffer;
+    };
+
+    const evaluateObservablesFast = (currentState: Float64Array) => {
+      const buffer = evaluateObservablesIntoBuffer(currentState);
+      for (let i = 0; i < observableNames.length; i++) {
+        observableValuesRecord[observableNames[i]] = buffer[i];
+      }
+      return observableValuesRecord;
     };
 
     const evaluateFunctionsForOutput = (currentState: Float64Array, observableValues: Record<string, number>) => {
@@ -633,6 +708,63 @@ export async function simulate(
       }
       return results;
     };
+
+    const buildMassActionJitReactions = () => concreteReactions.map((rxn, rxnIndex) => {
+      const reactantIndices: number[] = [];
+      const reactantStoich: number[] = [];
+      const reactantCounts = new Map<number, number>();
+      for (const idx of rxn.reactants) {
+        reactantCounts.set(idx, (reactantCounts.get(idx) || 0) + 1);
+      }
+      for (const [idx, count] of reactantCounts) {
+        reactantIndices.push(idx);
+        reactantStoich.push(count);
+      }
+
+      const productIndices: number[] = [];
+      const productStoich: number[] = [];
+      const productCounts = new Map<number, number>();
+      for (let j = 0; j < rxn.products.length; j++) {
+        const idx = rxn.products[j];
+        const stoich = rxn.productStoichiometries ? rxn.productStoichiometries[j] : 1;
+        productCounts.set(idx, (productCounts.get(idx) || 0) + stoich);
+      }
+      for (const [idx, count] of productCounts) {
+        productIndices.push(idx);
+        productStoich.push(count);
+      }
+
+      const propensityFactor = rxn.propensityFactor ?? 1;
+      const degeneracyFactor = rxn.degeneracy ?? 1;
+      let rateConstant: number | string = rxn.rateConstant * propensityFactor * degeneracyFactor;
+      if (!rxn.isFunctionalRate && typeof rxn.rate === 'string' && rxn.rate.trim().length > 0) {
+        const symbolicRate = rxn.rate.trim();
+        const applyPropensityFactor = rxn.propensityFactor !== undefined && rxn.propensityFactor !== 1;
+        const applyDegeneracyFactor = rxn.degeneracy !== undefined && rxn.degeneracy !== 1;
+        if (applyPropensityFactor || applyDegeneracyFactor) {
+          const factors: string[] = [symbolicRate];
+          if (applyPropensityFactor) factors.push(String(propensityFactor));
+          if (applyDegeneracyFactor) factors.push(String(degeneracyFactor));
+          rateConstant = factors.map((part) => `(${part})`).join(' * ');
+        } else {
+          rateConstant = symbolicRate;
+        }
+      }
+
+      return {
+        reactantIndices,
+        reactantStoich,
+        productIndices,
+        productStoich,
+        rateConstant,
+        scalingVolume: reactionReactingVolumes[rxnIndex],
+        totalRate: rxn.totalRate
+      };
+    });
+
+    let compiledMassActionJit: JITCompiledFunction | undefined;
+    let activeNativeByteCode: NetworkByteCode | undefined;
+    let rebuildNativeByteCode: (() => void) | undefined;
 
 
     const applyParameterUpdates = (targetPhaseIdx: number): boolean => {
@@ -692,6 +824,7 @@ export async function simulate(
 
       // Update mass action rates for reactions that depend on changed parameters
       if (parametersUpdated) {
+        compiledMassActionJit?.updateParameters?.(model.parameters);
         const context = model.parameters || {};
         for (let i = 0; i < concreteReactions.length; i++) {
           const rxn = concreteReactions[i];
@@ -710,6 +843,7 @@ export async function simulate(
           }
         }
         clearAllEvaluatorCaches();
+        rebuildNativeByteCode?.();
       }
 
 
@@ -1320,22 +1454,18 @@ export async function simulate(
 
     const buildDerivativesFunction = () => {
       if (functionalRateCount > 0) {
+        const parameterNames = Object.keys(model.parameters || {});
+        const reusableRateContext = { ...(model.parameters || {}), ...observableValuesRecord };
+
         const computeObservableValues = (yIn: Float64Array): Record<string, number> => {
-          const obsValues: Record<string, number> = {};
-          for (let i = 0; i < concreteObservables.length; i++) {
-            const obs = concreteObservables[i];
-            let sum = 0;
-            for (let j = 0; j < obs.indices.length; j++) {
-              const idx = obs.indices[j];
-              const val = yIn[idx];
-              const obsVolumes = (obs as any).volumes;
-              const termVolume = Array.isArray(obsVolumes)
-                ? (obsVolumes[j] ?? speciesVolumes[idx])
-                : speciesVolumes[idx];
-              const amount = isOde ? (val * termVolume) : val;
-              sum += amount * obs.coefficients[j];
-            }
-            obsValues[obs.name] = sum;
+          const obsValues = evaluateObservablesFast(yIn);
+          for (let i = 0; i < parameterNames.length; i++) {
+            const name = parameterNames[i];
+            reusableRateContext[name] = model.parameters[name];
+          }
+          for (let i = 0; i < observableNames.length; i++) {
+            const name = observableNames[i];
+            reusableRateContext[name] = obsValues[name];
           }
           return obsValues;
         };
@@ -1343,7 +1473,7 @@ export async function simulate(
         return (yIn: Float64Array, dydt: Float64Array) => {
           dydt.fill(0);
           const obsValues = computeObservableValues(yIn);
-          const context = { ...model.parameters, ...obsValues }; // Issue 5 opt
+          const context = reusableRateContext;
 
           for (let i = 0; i < concreteReactions.length; i++) {
             if (debugDerivs && !(globalThis as any)._hasLoggedIndices) {
@@ -1441,58 +1571,21 @@ export async function simulate(
         };
       }
 
-      const hasDynamicParamExpressions = !!model.paramExpressions && Object.keys(model.paramExpressions).length > 0;
-      const allowJit = functionalRateCount === 0 && parameterChanges.length === 0 && !hasDynamicParamExpressions;
+      const allowJit = functionalRateCount === 0;
 
       if (allowJit) {
         try {
-          // Map concreteReactions to JITCompiler format
-          const jitReactions = concreteReactions.map(rxn => {
-            const reactantIndices: number[] = [];
-            const reactantStoich: number[] = [];
-            const reactantCounts = new Map<number, number>();
-            for (const idx of rxn.reactants) {
-              reactantCounts.set(idx, (reactantCounts.get(idx) || 0) + 1);
-            }
-            for (const [idx, count] of reactantCounts) {
-              reactantIndices.push(idx);
-              reactantStoich.push(count);
-            }
-
-            const productIndices: number[] = [];
-            const productStoich: number[] = [];
-            const productCounts = new Map<number, number>();
-            for (let j = 0; j < rxn.products.length; j++) {
-              const idx = rxn.products[j];
-              const s = rxn.productStoichiometries ? rxn.productStoichiometries[j] : 1;
-              productCounts.set(idx, (productCounts.get(idx) || 0) + s);
-            }
-            for (const [idx, count] of productCounts) {
-              productIndices.push(idx);
-              productStoich.push(count);
-            }
-
-            return {
-              reactantIndices,
-              reactantStoich,
-              productIndices,
-              productStoich,
-              rateConstant: rxn.rateConstant * rxn.propensityFactor * (rxn.degeneracy ?? 1),
-              scalingVolume: reactionReactingVolumes[concreteReactions.indexOf(rxn)],
-              totalRate: rxn.totalRate
-            };
-          });
-
           const constantSpeciesMask = model.species.map((s) => !!s.isConstant);
-          const jitResult = jitCompiler.compile(jitReactions, numSpecies, model.parameters, constantSpeciesMask);
+          compiledMassActionJit = jitCompiler.compile(buildMassActionJitReactions(), numSpecies, model.parameters, constantSpeciesMask);
 
           // Return the JIT-compiled function but wrapped to handle speciesVolumes
           console.log(`[Worker] JIT compiler active for ${concreteReactions.length} reactions.`);
           return (yIn: Float64Array, dydt: Float64Array) => {
-            jitResult.evaluate(0, yIn, dydt, speciesVolumes);
+            compiledMassActionJit!.evaluate(0, yIn, dydt, speciesVolumes);
           };
 
         } catch (e) {
+          compiledMassActionJit = undefined;
           console.warn('[Worker] JIT integration failed, falling back to loop:', e instanceof Error ? e.message : String(e));
         }
       }
@@ -1807,7 +1900,14 @@ export async function simulate(
       ((typeof process !== 'undefined') && process?.env?.BNG_DISABLE_NATIVE_BYTECODE === '1') ||
       ((options as any)?.disableNativeBytecode === true);
     const enableNativeBytecode = !disableNativeBytecode;
-    if (enableNativeBytecode && (requestedSolverType.startsWith('cvode') || requestedSolverType === 'auto') && !hasLocalFunctions) {
+    rebuildNativeByteCode = () => {
+      activeNativeByteCode = undefined;
+      delete solverOptions.networkByteCode;
+
+      if (!(enableNativeBytecode && (requestedSolverType.startsWith('cvode') || requestedSolverType === 'auto') && !hasLocalFunctions)) {
+        return;
+      }
+
       const byteCodeReactions = concreteReactions.map((r, i) => {
         const multiplicativeFactor = (r.propensityFactor ?? 1) * (r.degeneracy ?? 1);
         const scaledRateConstant = r.isFunctionalRate
@@ -1857,13 +1957,15 @@ export async function simulate(
         model.parameters,
         speciesVolumes,
         constantSpeciesMask,
-        concreteObservables as any
+        concreteObservables as any,
+        speciesHeaders
       );
       if (bc) {
+        activeNativeByteCode = bc;
         solverOptions.networkByteCode = bc;
-        // console.log('[SimulationLoop] Bytecode generated successfully for native path');
       }
-    }
+    };
+    rebuildNativeByteCode();
 
     // WebGPU Path
     if (solverType === 'webgpu_rk4') {
@@ -1992,10 +2094,7 @@ export async function simulate(
       let solverError = false;
 
       // Apply parameter updates before this phase
-      if (applyParameterUpdates(phaseIdx)) {
-        // Re-build derivatives if parameters changed, as JIT/Hardcoded rates may be in use
-        derivatives = buildDerivativesFunction();
-      }
+      applyParameterUpdates(phaseIdx);
 
 
 

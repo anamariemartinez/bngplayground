@@ -41,6 +41,11 @@ import { handleExportSedml } from './handlers/exportSedml.js';
 import { handleExportOmex } from './handlers/exportOmex.js';
 import { handleExportSbml } from './handlers/exportSbml.js';
 import { handleSuggestAnnotations } from './handlers/suggestAnnotations.js';
+import { handleComposeModel } from './handlers/composeModel.js';
+import { handleEditModel } from './handlers/editModel.js';
+import { handleDiagnoseModel } from './handlers/diagnoseModel.js';
+import { handleExplainModel } from './handlers/explainModel.js';
+import { handleSuggestFix } from './handlers/suggestFix.js';
 
 const server = new Server(
   {
@@ -381,6 +386,79 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['code'],
         },
       },
+      {
+        name: 'compose_model',
+        description: 'Compose BNGL model code from natural-language biological statements.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            statements: { type: 'array', items: { type: 'string' }, description: 'Natural-language statements to convert into rules' },
+            parameters: { type: 'object', description: 'Optional explicit parameter values' },
+            seed_species: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  species: { type: 'string' },
+                  count: { type: 'number' },
+                },
+                required: ['species', 'count'],
+              },
+            },
+          },
+          required: ['statements'],
+        },
+      },
+      {
+        name: 'edit_model',
+        description: 'Apply structured editing operations to BNGL code and return an updated model.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'Original BNGL code' },
+            operations: { type: 'array', items: { type: 'object' }, description: 'Ordered list of edit operations' },
+          },
+          required: ['code', 'operations'],
+        },
+      },
+      {
+        name: 'diagnose_model',
+        description: 'Run deep diagnosis including structure, stiffness, simulation dynamics, and conservation hints.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            max_parameters: { type: 'number', description: 'Maximum number of parameters to include in Sobol/FIM sub-analysis (default: 5)' },
+            method: { type: 'string', enum: [...simulationMethods], description: 'Simulation method used for dynamic probing' },
+            t_end: { type: 'number', description: 'End time for dynamic probing simulation' },
+            n_steps: { type: 'number', description: 'Number of simulation steps for dynamic probing' },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'explain_model',
+        description: 'Generate a human-readable conceptual explanation of a BNGL model.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'suggest_fix',
+        description: 'Suggest validation-driven fixes and optionally return auto-corrected BNGL code.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            include_auto_corrected_code: { type: 'boolean', description: 'Return suggested auto-corrected code when possible' },
+          },
+          required: ['code'],
+        },
+      },
     ],
   };
 });
@@ -420,6 +498,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       return handleExportSbml(args);
     case 'suggest_annotations':
       return handleSuggestAnnotations(args);
+    case 'compose_model':
+      return handleComposeModel(args);
+    case 'edit_model':
+      return handleEditModel(args);
+    case 'diagnose_model':
+      return handleDiagnoseModel(args);
+    case 'explain_model':
+      return handleExplainModel(args);
+    case 'suggest_fix':
+      return handleSuggestFix(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

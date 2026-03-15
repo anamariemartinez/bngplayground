@@ -11,7 +11,13 @@ import {
     CartesianGrid
 } from 'recharts';
 import { BNGLModel, SimulationResults, SimulationOptions } from '../../types';
-import { bnglWorkerPool } from '../../services/BnglWorkerPool';
+import {
+    bnglWorkerPool,
+    getSharedEnsembleFeatureVector,
+    isSharedEnsembleResultsHandle,
+    materializeSharedSimulationResult,
+    type SharedEnsembleResultsHandle,
+} from '../../services/BnglWorkerPool';
 import { CHART_COLORS } from '../../chartColors';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -23,13 +29,13 @@ interface TrajectoryExplorerTabProps {
 
 interface RunData {
     id: number;
-    results: SimulationResults;
     embedding?: [number, number];
 }
 
 export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ model }) => {
     const [ensembleSize, setEnsembleSize] = useState(50);
     const [method, setMethod] = useState<'ssa' | 'nf'>('ssa');
+    const [ensembleResults, setEnsembleResults] = useState<SimulationResults[] | SharedEnsembleResultsHandle | null>(null);
     const [runs, setRuns] = useState<RunData[]>([]);
     const [isSimulating, setIsSimulating] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -46,6 +52,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
         setProgress(0);
         setError(null);
         setSelectedRunIdx(null);
+        setEnsembleResults(null);
         setRuns([]);
 
         const controller = new AbortController();
@@ -57,6 +64,7 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                 t_end: model.simulationOptions?.t_end ?? 100,
                 n_steps: model.simulationOptions?.n_steps ?? 100,
                 includeInfluence: false, // Disable DIN for maximum speed in explorer
+                includeSpeciesData: false,
             };
 
             // Run parallel ensemble using worker pool
@@ -67,18 +75,24 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
                 (completed) => setProgress(Math.round((completed / ensembleSize) * 100))
             );
 
-            const results: RunData[] = ensembleResults.map((res, i) => ({
+            const runCount = isSharedEnsembleResultsHandle(ensembleResults)
+                ? ensembleResults.runCount
+                : ensembleResults.length;
+
+            const results: RunData[] = Array.from({ length: runCount }, (_, i) => ({
                 id: i,
-                results: res
             }));
+            setEnsembleResults(ensembleResults);
 
             // 3. Compute UMAP if we have enough runs
             if (results.length > 3) {
                 setProgress(100);
                 // Prepare data for UMAP: flatten all observables into one vector per run
-                const featureMatrix = results.map(r => {
-                    return r.results.data.flatMap(row => Object.values(row).filter(v => typeof v === 'number'));
-                });
+                const featureMatrix = isSharedEnsembleResultsHandle(ensembleResults)
+                    ? results.map((r) => getSharedEnsembleFeatureVector(ensembleResults, r.id))
+                    : ensembleResults.map((res) => {
+                        return res.data.flatMap(row => Object.values(row).filter(v => typeof v === 'number'));
+                    });
 
                 const umap = new UMAP({
                     nComponents: 2,
@@ -111,8 +125,11 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
 
     // Prepare line chart data: current run + average if possible
     const chartData = useMemo(() => {
-        if (selectedRunIdx === null || !runs[selectedRunIdx]) return [];
-        const selectedData = runs[selectedRunIdx].results.data;
+        if (selectedRunIdx === null || !runs[selectedRunIdx] || !ensembleResults) return [];
+        const selectedResult = isSharedEnsembleResultsHandle(ensembleResults)
+            ? materializeSharedSimulationResult(ensembleResults, selectedRunIdx)
+            : ensembleResults[selectedRunIdx];
+        const selectedData = selectedResult?.data ?? [];
 
         return selectedData.map((row, i) => {
             const entry: any = { time: row.time ?? i };
@@ -121,12 +138,15 @@ export const TrajectoryExplorerTab: React.FC<TrajectoryExplorerTabProps> = ({ mo
             });
             return entry;
         });
-    }, [selectedRunIdx, runs]);
+    }, [selectedRunIdx, runs, ensembleResults]);
 
     const observables = useMemo(() => {
-        if (runs.length === 0) return [];
-        return runs[0].results.headers.filter(h => h !== 'time');
-    }, [runs]);
+        if (!ensembleResults) return [];
+        const headers = isSharedEnsembleResultsHandle(ensembleResults)
+            ? ensembleResults.headers
+            : (ensembleResults[0]?.headers ?? []);
+        return headers.filter(h => h !== 'time');
+    }, [ensembleResults]);
 
     // Metadata for the TimeSeriesChart series
     const chartSeries = useMemo<TimeSeriesSeries[]>(() => {

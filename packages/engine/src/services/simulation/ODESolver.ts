@@ -1534,7 +1534,7 @@ export class CVODESolver {
 
     // Initialize solver.
     let solverMem: number;
-    const hasNativeSparseJacobian = !!(
+    const hasNativeSparseJacobian = this.useSparse && !!(
       this.networkByteCode?.jacRowPtr &&
       this.networkByteCode?.jacColIdx &&
       this.networkByteCode?.jacContribOffsets &&

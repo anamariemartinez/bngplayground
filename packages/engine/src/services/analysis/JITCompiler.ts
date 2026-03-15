@@ -58,12 +58,33 @@ export interface NetworkByteCode {
     exprBytecodeOffsets: Int32Array;
     exprBytecode: Uint8Array;
     exprConstants: Float64Array;
+    requiresParameterRebuild?: boolean;
+}
+
+export interface JITObservableDefinition {
+    name: string;
+    indices: Int32Array | number[];
+    coefficients: Float64Array | number[];
+    volumes?: Float64Array | number[];
+}
+
+export type CompiledObservableEvaluator = (
+    y: Float64Array,
+    output: Float64Array,
+    speciesVolumes?: Float64Array
+) => void;
+
+export interface JITCompiledObservableFunction {
+    evaluate: CompiledObservableEvaluator;
+    sourceCode: string;
+    nObservables: number;
+    compiledAt: number;
 }
 
 /**
  * Compiled RHS function type
  */
-export type CompiledRHS = (t: number, y: Float64Array, dydt: Float64Array, speciesVolumes: Float64Array) => void;
+export type CompiledRHS = (t: number, y: Float64Array, dydt: Float64Array, speciesVolumes?: Float64Array) => void;
 
 /**
  * JIT compilation result
@@ -74,6 +95,8 @@ export interface JITCompiledFunction {
     nSpecies: number;
     nReactions: number;
     compiledAt: number;
+    updateParameters?: (parameters?: Record<string, number>) => void;
+    parameterNames?: string[];
 }
 
 /**
@@ -81,7 +104,69 @@ export interface JITCompiledFunction {
  */
 export class JITCompiler {
     private cache: Map<string, JITCompiledFunction> = new Map();
+    private observableCache: Map<string, JITCompiledObservableFunction> = new Map();
     private maxCacheSize: number = 50;
+
+    private hashString(value: string): string {
+        let hash = 2166136261;
+        for (let i = 0; i < value.length; i++) {
+            hash ^= value.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(16);
+    }
+
+    private buildReactionSignature(
+        reactions: Array<{
+            reactantIndices: Array<number | string>;
+            reactantStoich: number[];
+            productIndices: Array<number | string>;
+            productStoich: number[];
+            rateConstant: number | string;
+            scalingVolume?: number;
+            totalRate?: boolean;
+        }>,
+        nSpecies: number,
+        parameterNames: string[],
+        constantSpeciesMask?: boolean[]
+    ): string {
+        const parts: string[] = [`n=${nSpecies}`, `p=${parameterNames.join(',')}`];
+        if (constantSpeciesMask && constantSpeciesMask.length > 0) {
+            parts.push(`c=${constantSpeciesMask.map((value) => (value ? '1' : '0')).join('')}`);
+        }
+        for (const reaction of reactions) {
+            parts.push([
+                reaction.reactantIndices.join(','),
+                reaction.reactantStoich.join(','),
+                reaction.productIndices.join(','),
+                reaction.productStoich.join(','),
+                String(reaction.rateConstant),
+                String(reaction.scalingVolume ?? 1),
+                reaction.totalRate ? '1' : '0'
+            ].join('|'));
+        }
+        return this.hashString(parts.join(';'));
+    }
+
+    private buildParameterVector(parameterNames: string[], parameters?: Record<string, number>): Float64Array {
+        const values = new Float64Array(parameterNames.length);
+        for (let i = 0; i < parameterNames.length; i++) {
+            const rawValue = parameters?.[parameterNames[i]];
+            values[i] = typeof rawValue === 'number' && Number.isFinite(rawValue) ? rawValue : 0;
+        }
+        return values;
+    }
+
+    private updateParameterVector(target: Float64Array, parameterNames: string[], parameters?: Record<string, number>): void {
+        for (let i = 0; i < parameterNames.length; i++) {
+            const rawValue = parameters?.[parameterNames[i]];
+            target[i] = typeof rawValue === 'number' && Number.isFinite(rawValue) ? rawValue : 0;
+        }
+    }
+
+    private extractParameterNames(parameters?: Record<string, number>): string[] {
+        return parameters ? Object.keys(parameters).sort() : [];
+    }
 
     private normalizeSpeciesIndex(
         rawIndex: number | string,
@@ -97,6 +182,89 @@ export class JITCompiler {
             );
         }
         return normalized;
+    }
+
+    compileObservables(
+        observables: JITObservableDefinition[],
+        nSpecies: number,
+        useAmounts: boolean
+    ): JITCompiledObservableFunction {
+        const signature = JSON.stringify({
+            nSpecies,
+            useAmounts,
+            observables: observables.map((obs) => ({
+                i: Array.from(obs.indices),
+                c: Array.from(obs.coefficients),
+                v: obs.volumes ? Array.from(obs.volumes) : null
+            }))
+        });
+
+        const cached = this.observableCache.get(signature);
+        if (cached) {
+            return cached;
+        }
+
+        let source = '';
+        source += `if (!speciesVolumes) { speciesVolumes = new Float64Array(${nSpecies}); speciesVolumes.fill(1.0); }\n`;
+
+        for (let i = 0; i < observables.length; i++) {
+            const obs = observables[i];
+            const terms: string[] = [];
+            for (let j = 0; j < obs.indices.length; j++) {
+                const idx = this.normalizeSpeciesIndex(obs.indices[j], nSpecies, i, 'reactant', j);
+                const coeff = Number(obs.coefficients[j]);
+                const explicitVolume = obs.volumes && j < obs.volumes.length ? Number(obs.volumes[j]) : null;
+                const volumeExpr = explicitVolume === null || Number.isNaN(explicitVolume)
+                    ? `speciesVolumes[${idx}]`
+                    : `${explicitVolume}`;
+                const speciesExpr = useAmounts
+                    ? `(y[${idx}] * ${volumeExpr})`
+                    : `y[${idx}]`;
+                terms.push(`(${speciesExpr}) * ${coeff}`);
+            }
+
+            source += `output[${i}] = ${terms.length > 0 ? terms.join(' + ') : '0.0'};\n`;
+        }
+
+        const fullSource = `(function(y, output, speciesVolumes) {\n${source}})`;
+
+        let evaluate: CompiledObservableEvaluator;
+        try {
+            evaluate = eval(fullSource) as CompiledObservableEvaluator;
+        } catch (error) {
+            console.error('[JITCompiler] Failed to compile observable evaluator:', error);
+            console.error('[JITCompiler] Observable source:', fullSource);
+            evaluate = (y, output, speciesVolumes) => {
+                const fallbackVolumes = speciesVolumes ?? new Float64Array(nSpecies).fill(1.0);
+                for (let i = 0; i < observables.length; i++) {
+                    let sum = 0;
+                    const obs = observables[i];
+                    for (let j = 0; j < obs.indices.length; j++) {
+                        const idx = Number(obs.indices[j]);
+                        const coeff = Number(obs.coefficients[j]);
+                        const explicitVolume = obs.volumes && j < obs.volumes.length ? Number(obs.volumes[j]) : fallbackVolumes[idx];
+                        const value = useAmounts ? (y[idx] * explicitVolume) : y[idx];
+                        sum += value * coeff;
+                    }
+                    output[i] = sum;
+                }
+            };
+        }
+
+        const result: JITCompiledObservableFunction = {
+            evaluate,
+            sourceCode: fullSource,
+            nObservables: observables.length,
+            compiledAt: Date.now()
+        };
+
+        if (this.observableCache.size >= this.maxCacheSize) {
+            const firstKey = this.observableCache.keys().next().value;
+            if (firstKey !== undefined) this.observableCache.delete(firstKey);
+        }
+        this.observableCache.set(signature, result);
+
+        return result;
     }
 
 
@@ -120,27 +288,12 @@ export class JITCompiler {
         parameters?: Record<string, number>,
         constantSpeciesMask?: boolean[]
     ): JITCompiledFunction {
-        // Build a cache key based on reactions and parameters
-        // Note: For large networks, hashing might be slow, so we use a simplified signature 
-        // or just rely on callers to clear the cache if they know things changed.
-        // However, we want to BE SAFE, so we include parameters because they are inlined.
-        const configSignature = JSON.stringify({
-            rxnSignatures: reactions.map(r => ({
-                r: Array.from(r.reactantIndices),
-                rs: Array.from(r.reactantStoich),
-                p: Array.from(r.productIndices),
-                ps: Array.from(r.productStoich),
-                k: r.rateConstant,
-                v: r.scalingVolume,
-                t: r.totalRate
-            })),
-            nSpecies,
-            constantSpeciesMask: constantSpeciesMask ?? [],
-            parameters: parameters || {}
-        });
+        const parameterNames = this.extractParameterNames(parameters);
+        const configSignature = this.buildReactionSignature(reactions, nSpecies, parameterNames, constantSpeciesMask);
 
         const cached = this.cache.get(configSignature);
         if (cached) {
+            cached.updateParameters?.(parameters);
             return cached;
         }
 
@@ -150,13 +303,10 @@ export class JITCompiler {
         const isConstantSpecies = (idx: number): boolean =>
             !!constantSpeciesMask && idx >= 0 && idx < constantSpeciesMask.length && !!constantSpeciesMask[idx];
 
-        // Add parameter bindings if provided
-        if (parameters) {
-            for (const [name, value] of Object.entries(parameters)) {
-                // Ensure name is a valid JS identifier
-                if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
-                    source += `const ${name} = ${value};\n`;
-                }
+        for (let i = 0; i < parameterNames.length; i++) {
+            const name = parameterNames[i];
+            if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+                source += `const ${name} = params[${i}];\n`;
             }
         }
 
@@ -291,12 +441,13 @@ export class JITCompiler {
         }
 
         // Create the function
-        const fullSource = `(function(t, y, dydt, speciesVolumes) {\n${source}})`;
+        const fullSource = `(function(params) {\nreturn function(t, y, dydt, speciesVolumes) {\n${source}}\n})`;
 
         let evaluate: CompiledRHS;
+        const parameterVector = this.buildParameterVector(parameterNames, parameters);
         try {
-
-            evaluate = eval(fullSource) as CompiledRHS;
+            const factory = eval(fullSource) as (params: Float64Array) => CompiledRHS;
+            evaluate = factory(parameterVector);
         } catch (error) {
             console.error('[JITCompiler] Failed to compile RHS function:', error);
             console.error('[JITCompiler] Source:', fullSource);
@@ -311,7 +462,11 @@ export class JITCompiler {
             sourceCode: fullSource,
             nSpecies,
             nReactions: reactions.length,
-            compiledAt: Date.now()
+            compiledAt: Date.now(),
+            parameterNames,
+            updateParameters: (nextParameters?: Record<string, number>) => {
+                this.updateParameterVector(parameterVector, parameterNames, nextParameters);
+            }
         };
 
         // Manage cache size
@@ -415,7 +570,8 @@ export class JITCompiler {
             name: string;
             indices: Int32Array | number[];
             coefficients: Float64Array | number[];
-        }>
+        }>,
+        speciesNames?: string[]
     ): NetworkByteCode | null {
         const isConstant = (idx: number): boolean =>
             !!constantSpeciesMask && idx >= 0 && idx < constantSpeciesMask.length && !!constantSpeciesMask[idx];
@@ -450,6 +606,7 @@ export class JITCompiler {
             const exprBytecodeOffsets = new Int32Array(nReactions + 1);
             const bytecodeChunks: Uint8Array[] = [];
             let totalBytecodeLen = 0;
+            let requiresParameterRebuild = false;
 
             let totalReactantEntries = 0;
             for (const rxn of reactions) {
@@ -463,19 +620,22 @@ export class JITCompiler {
             let currentReactantOffset = 0;
             for (let i = 0; i < nReactions; i++) {
                 const rxn = reactions[i];
+                exprBytecodeOffsets[i] = totalBytecodeLen;
+                let hasExpressionBytecode = false;
 
-                // Check for functional rate bytecode
-                if (typeof rxn.rateConstant === 'string' && rxn.rateConstant.includes('y[')) {
+                // Check for functional or parameterized rate bytecode
+                if (typeof rxn.rateConstant === 'string') {
                     const bc = this.compileExpressionToBytecode(
                         rxn.rateConstant,
                         parameters || {},
-                        nSpecies,
+                        speciesNames || [],
                         (observables || []).map(o => o.name)
                     );
                     if (bc) {
-                        exprBytecodeOffsets[i] = totalBytecodeLen;
-                        bytecodeChunks.push(bc);
-                        totalBytecodeLen += bc.length;
+                        bytecodeChunks.push(bc.bytecode);
+                        totalBytecodeLen += bc.bytecode.length;
+                        requiresParameterRebuild ||= bc.usesParameters;
+                        hasExpressionBytecode = true;
                     }
                 }
 
@@ -484,16 +644,19 @@ export class JITCompiler {
                 if (typeof rxn.rateConstant === 'number') {
                     k = rxn.rateConstant;
                 } else {
-                    // Try to evaluate expression
-                    const translated = ExpressionTranslator.translate(rxn.rateConstant.toString());
-                    // Simple evaluation for parameters
-                    try {
-
-                        const evaluator = new Function('params', `const {${Object.keys(parameters || {}).join(',')}} = params; return ${translated};`);
-                        k = evaluator(parameters || {});
-                        if (isNaN(k) || !isFinite(k)) return null;
-                    } catch {
-                        return null; // Contains y[i] or other non-constant terms
+                    if (hasExpressionBytecode) {
+                        k = 0;
+                    } else {
+                        // Try to evaluate expression
+                        const translated = ExpressionTranslator.translate(rxn.rateConstant.toString());
+                        // Simple evaluation for parameters
+                        try {
+                            const evaluator = new Function('params', `const {${Object.keys(parameters || {}).join(',')}} = params; return ${translated};`);
+                            k = evaluator(parameters || {});
+                            if (isNaN(k) || !isFinite(k)) return null;
+                        } catch {
+                            return null; // Contains y[i] or other non-constant terms
+                        }
                     }
                 }
 
@@ -512,6 +675,7 @@ export class JITCompiler {
                     currentReactantOffset++;
                 }
             }
+            exprBytecodeOffsets[nReactions] = totalBytecodeLen;
             reactantOffsets[nReactions] = currentReactantOffset;
 
             // Stoichiometry matrix conversion (CSC-like)
@@ -674,7 +838,8 @@ export class JITCompiler {
                 obsCoeffs,
                 exprBytecodeOffsets,
                 exprBytecode,
-                exprConstants: new Float64Array(0) // Not used yet
+                exprConstants: new Float64Array(0),
+                requiresParameterRebuild
             };
         } catch (error) {
             console.error('[JITCompiler] Failed to compile bytecode:', error);
@@ -687,6 +852,7 @@ export class JITCompiler {
      */
     clearCache(): void {
         this.cache.clear();
+        this.observableCache.clear();
         console.log('[JITCompiler] Cache cleared');
     }
 
@@ -695,7 +861,7 @@ export class JITCompiler {
      */
     getCacheStats(): { size: number; maxSize: number } {
         return {
-            size: this.cache.size,
+            size: this.cache.size + this.observableCache.size,
             maxSize: this.maxCacheSize
         };
     }
@@ -703,12 +869,15 @@ export class JITCompiler {
     private compileExpressionToBytecode(
         expr: string,
         parameters: Record<string, number>,
-        nSpecies: number,
+        speciesNames: string[],
         observableNames: string[]
-    ): Uint8Array | null {
+    ): { bytecode: Uint8Array; usesParameters: boolean } | null {
         try {
             const ast = jsep(expr);
             const bytes: number[] = [];
+            let usesParameters = false;
+            const speciesIndexByName = new Map<string, number>();
+            speciesNames.forEach((name, index) => speciesIndexByName.set(name, index));
 
             const walk = (node: any) => {
                 if (node.type === 'Literal') {
@@ -717,17 +886,14 @@ export class JITCompiler {
                     new Float64Array(buf)[0] = node.value;
                     bytes.push(...new Uint8Array(buf));
                 } else if (node.type === 'Identifier') {
-                    // 1. Check if it's a species y[N]
-                    const specMatch = node.name.match(/^y\[(\d+)\]$/);
-                    if (specMatch) {
-                        const idx = parseInt(specMatch[1], 10);
+                    const speciesIdx = speciesIndexByName.get(node.name);
+                    if (speciesIdx !== undefined) {
                         bytes.push(OP_PUSH_SPEC);
                         const buf = new ArrayBuffer(4);
-                        new Int32Array(buf)[0] = idx;
+                        new Int32Array(buf)[0] = speciesIdx;
                         bytes.push(...new Uint8Array(buf));
                         return;
                     }
-                    // 2. Check if it's an observable
                     const obsIdx = observableNames.indexOf(node.name);
                     if (obsIdx >= 0) {
                         bytes.push(OP_PUSH_OBS);
@@ -736,12 +902,24 @@ export class JITCompiler {
                         bytes.push(...new Uint8Array(buf));
                         return;
                     }
-                    // 3. Check if it's a parameter
-                    bytes.push(OP_PUSH_PARAM);
-                    const buf = new ArrayBuffer(4);
-                    // MOCK: find index in parameters or use 0
-                    new Int32Array(buf)[0] = 0;
-                    bytes.push(...new Uint8Array(buf));
+                    if (Object.prototype.hasOwnProperty.call(parameters, node.name)) {
+                        bytes.push(OP_PUSH_CONST);
+                        const buf = new ArrayBuffer(8);
+                        new Float64Array(buf)[0] = parameters[node.name];
+                        bytes.push(...new Uint8Array(buf));
+                        usesParameters = true;
+                        return;
+                    }
+                    throw new Error(`Unknown identifier: ${node.name}`);
+                } else if (node.type === 'MemberExpression') {
+                    if (node.object?.type === 'Identifier' && node.object.name === 'y' && node.property?.type === 'Literal') {
+                        bytes.push(OP_PUSH_SPEC);
+                        const buf = new ArrayBuffer(4);
+                        new Int32Array(buf)[0] = Number(node.property.value);
+                        bytes.push(...new Uint8Array(buf));
+                        return;
+                    }
+                    throw new Error(`Unsupported member expression in ${expr}`);
                 } else if (node.type === 'BinaryExpression') {
                     walk(node.left);
                     walk(node.right);
@@ -768,7 +946,7 @@ export class JITCompiler {
 
             walk(ast);
             bytes.push(OP_STOP);
-            return new Uint8Array(bytes);
+            return { bytecode: new Uint8Array(bytes), usesParameters };
         } catch (e) {
             console.warn('[JITCompiler] Bytecode compilation failed:', e);
             return null;
