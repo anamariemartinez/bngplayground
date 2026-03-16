@@ -65,6 +65,33 @@ export function structureError(error: Error): MCPErrorResult {
             relatedTools: ['validate_model'],
         };
     }
+    if (msg.includes('memory') || msg.includes('heap') || msg.includes('allocation')) {
+        return {
+            error: msg,
+            diagnosis: 'Out of memory — model is too large for available resources.',
+            recovery: 'Reduce max_agents, max_reactions, or max_iterations. Consider using NFsim for stochastic simulation.',
+            severity: 'recoverable',
+            relatedTools: ['diagnose_model'],
+        };
+    }
+    if (msg.includes('stack') || msg.includes('recursion') || msg.includes('call stack')) {
+        return {
+            error: msg,
+            diagnosis: 'Stack overflow — model may have cyclic rules or excessive recursion.',
+            recovery: 'Check for recursive rule patterns. Consider simplifying the model structure.',
+            severity: 'recoverable',
+            relatedTools: ['validate_model', 'diagnose_model'],
+        };
+    }
+    if (msg.includes('invalid') || msg.includes('undefined') || msg.includes('null')) {
+        return {
+            error: msg,
+            diagnosis: 'Invalid value detected — model contains undefined parameters or invalid references.',
+            recovery: 'Check that all parameters and species referenced in rules are properly defined.',
+            severity: 'recoverable',
+            relatedTools: ['validate_model'],
+        };
+    }
     // Generic fallback
     return {
         error: msg,

@@ -7,7 +7,7 @@ import { structureError } from '../services/errors.js';
 export async function handleExplainModel(args: ToolArgs): Promise<ToolResult<any>> {
     try {
         const parsedArgs = parseArgs('explain_model', explainModelArgsSchema, args);
-        const explanation = explainModelNarrative(parsedArgs.code);
+        const explanation = await explainModelNarrative(parsedArgs.code, parsedArgs.include_crux ?? false);
         return createToolResult(explanation);
     } catch (error) {
         const structured = structureError(error instanceof Error ? error : new Error(String(error)));

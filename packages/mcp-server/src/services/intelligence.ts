@@ -664,6 +664,76 @@ function detectSurprises(
     return surprises.slice(0, 3);
 }
 
+function detectDiminishingReturns(
+    sobolValues: Array<{ name: string; value: number }>,
+    threshold: number = 0.01,
+): { detected: boolean; message: string } | null {
+    if (!sobolValues || sobolValues.length < 3) return null;
+
+    const sorted = [...sobolValues].sort((a, b) => b.value - a.value);
+    const top3 = sorted.slice(0, 3);
+    
+    if (top3.length < 2) return null;
+
+    const first = top3[0].value;
+    const second = top3[1].value;
+
+    if (first < threshold) {
+        return {
+            detected: true,
+            message: `All parameters have negligible sensitivity (<${threshold}). Model may be over-parameterized or observables insensitive.`,
+        };
+    }
+
+    if (second / first < 0.05) {
+        return {
+            detected: true,
+            message: `Diminishing returns: ${top3[0].name} dominates (S=${first.toFixed(3)}). Second parameter ${top3[1].name} contributes only ${(second/first*100).toFixed(1)}% of top sensitivity.`,
+        };
+    }
+
+    return null;
+}
+
+function detectCrosstalk(
+    reactionRules: Array<{ reactants: string[]; products: string[]; name?: string }>,
+    moleculeTypes: Array<{ name: string }>,
+): Array<{ molecule: string; pathways: number; rules: string[]; warning: string }> {
+    const moleculePathways: Record<string, { pathways: number; rules: Set<string> }> = {};
+    
+    for (const mol of moleculeTypes) {
+        moleculePathways[mol.name] = { pathways: 0, rules: new Set() };
+    }
+    
+    for (const rule of reactionRules) {
+        const allMols = [...rule.reactants, ...rule.products];
+        for (const molExpr of allMols) {
+            const molName = molExpr.split('(')[0];
+            if (moleculePathways[molName]) {
+                moleculePathways[molName].pathways++;
+                if (rule.name) {
+                    moleculePathways[molName].rules.add(rule.name);
+                }
+            }
+        }
+    }
+    
+    const warnings: Array<{ molecule: string; pathways: number; rules: string[]; warning: string }> = [];
+    
+    for (const [mol, data] of Object.entries(moleculePathways)) {
+        if (data.pathways >= 3) {
+            warnings.push({
+                molecule: mol,
+                pathways: data.pathways,
+                rules: Array.from(data.rules),
+                warning: `${mol} participates in ${data.pathways} rules — potential crosstalk. Consider modularizing or adding compartment isolation.`,
+            });
+        }
+    }
+    
+    return warnings.sort((a, b) => b.pathways - a.pathways).slice(0, 5);
+}
+
 // Three-register summary generation for diagnostic output
 function generateThreeRegisters(args: {
     sobol?: {
@@ -986,6 +1056,16 @@ export async function diagnoseModelDeep(args: {
         surprise: string;
         severity: 'low' | 'medium' | 'high';
     }>;
+    diminishingReturns?: {
+        detected: boolean;
+        message: string;
+    };
+    crosstalkWarnings?: Array<{
+        molecule: string;
+        pathways: number;
+        rules: string[];
+        warning: string;
+    }>;
 }> {
     if (!args.code) {
         throw new Error('No BNGL code provided for model diagnosis.');
@@ -995,6 +1075,7 @@ export async function diagnoseModelDeep(args: {
     const reactionRules = model.reactionRules ?? [];
     const validation = validateModel(model, false);
     const unreachableRules = findUnreachableRules(model);
+    const crosstalkWarnings = detectCrosstalk(reactionRules, model.moleculeTypes ?? []);
 
     const rateConstants = reactionRules.map((rule) => {
         if (rule.isFunctionalRate) {
@@ -1039,6 +1120,7 @@ export async function diagnoseModelDeep(args: {
         topFirstOrder: Array<{ name: string; value: number }>;
         topTotalOrder: Array<{ name: string; value: number }>;
     } | undefined;
+    let diminishingReturns: { detected: boolean; message: string } | undefined;
     let fimSummary: {
         conditionNumber: number;
         identifiableParams: string[];
@@ -1272,6 +1354,8 @@ export async function diagnoseModelDeep(args: {
                 topTotalOrder,
             };
 
+            diminishingReturns = detectDiminishingReturns(topFirstOrder) ?? undefined;
+
             // Build contact map for enhanced causal tracing
             let contactMapResult: any;
             try {
@@ -1470,6 +1554,8 @@ export async function diagnoseModelDeep(args: {
             }
         } : {}),
         ...(surprises.length > 0 ? { surprises } : {}),
+        ...(diminishingReturns ? { diminishingReturns } : {}),
+        ...(crosstalkWarnings.length > 0 ? { crosstalkWarnings } : {}),
         ...(sobolSummary ? { sobol: sobolSummary } : {}),
         ...(fimSummary ? { fim: fimSummary } : {}),
         ...(mechanisticCausalTrace ? { mechanisticCausalTrace } : {}),
@@ -1479,12 +1565,20 @@ export async function diagnoseModelDeep(args: {
     };
 }
 
-export function explainModelNarrative(code: string): {
+export async function explainModelNarrative(code: string, includeCrux: boolean = false): Promise<{
     summary: string;
     sections: ExplainSection[];
     mechanisms: Array<{ name: string; type: string; count: number }>;
     molecules: Array<{ name: string; role: string; rules: string[] }>;
-} {
+    crux?: Array<{
+        rule?: string;
+        parameter: string;
+        sensitivity?: number;
+        knockoutEffect?: number;
+        pathway: string;
+        recommendation: string;
+    }>;
+}> {
     const model = parseModelOrThrow(code);
     const reactionRules = model.reactionRules ?? [];
 
@@ -1600,11 +1694,92 @@ export function explainModelNarrative(code: string): {
             : 'The model size is moderate and suitable for direct deterministic simulation.',
     ].join(' ');
 
+    let crux: Array<{ rule?: string; parameter: string; sensitivity?: number; knockoutEffect?: number; pathway: string; recommendation: string }> | undefined;
+    if (includeCrux && model.observables.length > 0 && Object.keys(model.parameters).length > 0) {
+        try {
+            const paramEntries = Object.entries(model.parameters).filter(([, v]) => Number.isFinite(v));
+            if (paramEntries.length > 0 && paramEntries.length <= 10) {
+                const firstObs = model.observables[0]?.name;
+                if (firstObs && reactionRules.length > 0 && reactionRules.length <= 20) {
+                    // Baseline simulation
+                    const baselineResult = await handleSimulate({
+                        code,
+                        method: 'ode',
+                        t_end: 10,
+                        n_steps: 50,
+                    });
+                    const baselineData = baselineResult.structuredContent?.data;
+                    if (!baselineData || baselineData.length === 0) {
+                        throw new Error('Baseline simulation failed');
+                    }
+                    const baselineFinal = baselineData[baselineData.length - 1];
+                    const baselineValue = Number(baselineFinal[firstObs] ?? 0);
+                    
+                    // Rule knockout analysis
+                    const ruleEffects: Array<{ rule: string; parameter: string; effect: number }> = [];
+                    
+                    for (const rule of reactionRules) {
+                        if (!rule.rate || rule.isFunctionalRate) continue;
+                        
+                        // Clone and modify code to set rate to 0
+                        let modifiedCode = code;
+                        const rateParam = rule.rate;
+                        const rateValue = model.parameters[rateParam];
+                        if (typeof rateValue !== 'number') continue;
+                        
+                        // Replace parameter value with 0 in the code
+                        const paramRegex = new RegExp(`^(${rateParam})\\s+${rateValue.toString()}\\s*$`, 'm');
+                        const zeroedCode = code.replace(paramRegex, `$1 0`);
+                        
+                        if (zeroedCode === code) continue; // No change made
+                        
+                        try {
+                            const koResult = await handleSimulate({
+                                code: zeroedCode,
+                                method: 'ode',
+                                t_end: 10,
+                                n_steps: 50,
+                            });
+                            const koData = koResult.structuredContent?.data;
+                            if (!koData || koData.length === 0) continue;
+                            
+                            const koFinal = koData[koData.length - 1];
+                            const koValue = Number(koFinal[firstObs] ?? 0);
+                            const effect = Math.abs(koValue - baselineValue) / (Math.abs(baselineValue) || 1);
+                            
+                            ruleEffects.push({
+                                rule: rule.name ?? 'unnamed',
+                                parameter: rateParam,
+                                effect,
+                            });
+                        } catch (e) {
+                            // Skip rules that fail to simulate
+                        }
+                    }
+                    
+                    if (ruleEffects.length > 0) {
+                        const sorted = ruleEffects.sort((a, b) => b.effect - a.effect);
+                        crux = sorted.slice(0, 3).map(entry => ({
+                            rule: entry.rule,
+                            parameter: entry.parameter,
+                            knockoutEffect: entry.effect,
+                            pathway: `Removal of ${entry.rule} changes ${firstObs} by ${(entry.effect * 100).toFixed(1)}%`,
+                            recommendation: entry.effect > 0.5 ? 'Critical — this rule is essential' : entry.effect > 0.1 ? 'Moderate — significant influence' : 'Low impact',
+                        }));
+                    }
+                }
+            }
+        } catch (e) {
+            // Crux identification is optional, silently skip on failure
+        }
+    }
+
     return {
         summary,
         sections,
         mechanisms: mechanismList,
         molecules: moleculeList,
+        ...(crux && crux.length > 0 ? { crux } : {}),
     };
 }
 

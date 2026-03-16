@@ -1144,10 +1144,12 @@ export async function simulate(
 
           const r2 = rng.next() * aTotal;
           let sumA = 0;
-          let reactionIndex = propensities.length - 1;
+          let reactionIndex = 0;
+          // Direct method: select reaction where cumulative sum exceeds r2
+          // Use < instead of <= to avoid bias toward last reaction when r2 ≈ aTotal
           for (let i = 0; i < propensities.length; i++) {
             sumA += propensities[i];
-            if (r2 <= sumA) {
+            if (r2 < sumA || i === propensities.length - 1) {
               reactionIndex = i;
               break;
             }

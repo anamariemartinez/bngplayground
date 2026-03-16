@@ -276,6 +276,7 @@ export const diagnoseModelArgsSchema = z.object({
 
 export const explainModelArgsSchema = z.object({
     code: z.string(),
+    include_crux: z.boolean().optional(),
 }).strict();
 
 export const suggestFixArgsSchema = z.object({

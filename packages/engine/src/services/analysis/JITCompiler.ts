@@ -61,6 +61,25 @@ export interface NetworkByteCode {
     requiresParameterRebuild?: boolean;
 }
 
+/**
+ * Source map entry: maps compiled bytecode regions back to BNGL source
+ */
+export interface ODEMappingEntry {
+    reactionIndex: number;
+    ruleName: string;
+    reactants: string[];
+    products: string[];
+    rateConstant: number;
+    lineNumber?: number;
+}
+
+export interface ODESourceMap {
+    modelName: string;
+    entries: ODEMappingEntry[];
+    generatedAt: string;
+    version: string;
+}
+
 export interface JITObservableDefinition {
     name: string;
     indices: Int32Array | number[];
@@ -969,6 +988,50 @@ export class JITCompiler {
             console.warn('[JITCompiler] Bytecode compilation failed:', e);
             return null;
         }
+    }
+
+    /**
+     * Generate a source map from compiled function back to BNGL rules
+     */
+    generateSourceMap(
+        compiledFn: JITCompiledFunction,
+        reactions: Array<{
+            reactantIndices: Array<number | string>;
+            productIndices: Array<number | string>;
+            rateConstant: number | string;
+            ruleName?: string;
+            lineNumber?: number;
+        }>,
+        speciesNames: string[],
+        modelName?: string
+    ): ODESourceMap {
+        const entries: ODEMappingEntry[] = [];
+
+        for (let i = 0; i < reactions.length; i++) {
+            const rxn = reactions[i];
+            const reactants = rxn.reactantIndices
+                .map((idx, j) => typeof idx === 'string' ? idx : speciesNames[idx] ?? `s${idx}`)
+                .filter((_, j) => j < (rxn.reactantIndices as unknown[]).length);
+            const products = rxn.productIndices
+                .map((idx, j) => typeof idx === 'string' ? idx : speciesNames[idx] ?? `s${idx}`)
+                .filter((_, j) => j < (rxn.productIndices as unknown[]).length);
+
+            entries.push({
+                reactionIndex: i,
+                ruleName: rxn.ruleName ?? `reaction_${i}`,
+                reactants,
+                products,
+                rateConstant: typeof rxn.rateConstant === 'number' ? rxn.rateConstant : 0,
+                lineNumber: rxn.lineNumber,
+            });
+        }
+
+        return {
+            modelName: modelName ?? 'unknown',
+            entries,
+            generatedAt: new Date().toISOString(),
+            version: '1.0.0',
+        };
     }
 }
 

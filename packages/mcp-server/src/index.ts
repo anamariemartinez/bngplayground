@@ -46,6 +46,11 @@ import { handleEditModel } from './handlers/editModel.js';
 import { handleDiagnoseModel } from './handlers/diagnoseModel.js';
 import { handleExplainModel } from './handlers/explainModel.js';
 import { handleSuggestFix } from './handlers/suggestFix.js';
+import { handleOptimalExperiment } from './handlers/optimalExperiment.js';
+import { handleCheckHysteresis } from './handlers/checkHysteresis.js';
+import { handleAnalyzeResiduals } from './handlers/analyzeResiduals.js';
+import { handleCheckPhaseHandoff } from './handlers/checkPhaseHandoff.js';
+import { handleAssessModelMaturity } from './handlers/assessModelMaturity.js';
 
 const server = new Server(
   {
@@ -449,11 +454,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'explain_model',
-        description: 'Generate a human-readable conceptual explanation of a BNGL model.',
+        description: 'Generate a human-readable conceptual explanation of a BNGL model, including entity classification, mechanism breakdown, and optional crux identification for critical pathways.',
         inputSchema: {
           type: 'object',
           properties: {
             code: { type: 'string', description: 'BNGL model code' },
+            include_crux: { type: 'boolean', description: 'Identify critical pathways via rule knockout analysis (for models with ≤20 rules)' },
           },
           required: ['code'],
         },
@@ -466,6 +472,86 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             code: { type: 'string', description: 'BNGL model code' },
             include_auto_corrected_code: { type: 'boolean', description: 'Return suggested auto-corrected code when possible' },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'optimal_experiment',
+        description: 'Suggest optimal experimental design for parameter identifiability using FIM analysis across candidate timepoints.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            observables: { type: 'array', items: { type: 'string' }, description: 'Observables to measure (default: all)' },
+            candidate_times: { type: 'array', items: { type: 'number' }, description: 'Candidate time points to sample' },
+            n_samples: { type: 'number', description: 'Number of samples per experiment (default: 10)' },
+            method: { type: 'string', enum: ['ode', 'ssa'], description: 'Simulation method' },
+            t_end: { type: 'number', description: 'End time' },
+          },
+          required: ['code'],
+        },
+      },
+      {
+        name: 'check_hysteresis',
+        description: 'Detect hysteresis by comparing forward and backward parameter sweeps.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            parameter: { type: 'string', description: 'Parameter to vary' },
+            sweep_range: { type: 'array', items: { type: 'number' }, description: 'Min and max values for sweep' },
+            steps: { type: 'number', description: 'Number of sweep steps (default: 20)' },
+            observable: { type: 'string', description: 'Observable to analyze' },
+            method: { type: 'string', enum: ['ode', 'ssa'] },
+            t_end: { type: 'number', description: 'End time' },
+          },
+          required: ['code', 'parameter', 'sweep_range'],
+        },
+      },
+      {
+        name: 'analyze_residuals',
+        description: 'Analyze residuals between model simulation and experimental data with statistical diagnostics.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            experimental_data: { type: 'array', items: { type: 'object', properties: { time: { type: 'number' }, observables: { type: 'object' } } }, description: 'Experimental data points' },
+            parameters: { type: 'object', description: 'Model parameters to use' },
+            method: { type: 'string', enum: ['ode', 'ssa'] },
+            t_end: { type: 'number', description: 'End time' },
+          },
+          required: ['code', 'experimental_data'],
+        },
+      },
+      {
+        name: 'check_phase_handoff',
+        description: 'Analyze phase transition behavior when a parameter changes abruptly.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            parameter: { type: 'string', description: 'Parameter to change' },
+            initial_value: { type: 'number', description: 'Initial parameter value' },
+            final_value: { type: 'number', description: 'Final parameter value' },
+            transition_time: { type: 'number', description: 'Time to complete transition' },
+            observable: { type: 'string', description: 'Observable to track' },
+            method: { type: 'string', enum: ['ode', 'ssa'] },
+            t_end: { type: 'number', description: 'End time' },
+          },
+          required: ['code', 'parameter', 'initial_value', 'final_value', 'transition_time'],
+        },
+      },
+      {
+        name: 'assess_model_maturity',
+        description: 'Evaluate model maturity based on structure, validation, and experimental fit.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            has_experimental_data: { type: 'boolean', description: 'Model has been fitted to experimental data' },
+            n_parameters: { type: 'number', description: 'Number of fitted parameters' },
+            n_observables: { type: 'number', description: 'Number of measured observables' },
           },
           required: ['code'],
         },
@@ -519,6 +605,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       return handleExplainModel(args);
     case 'suggest_fix':
       return handleSuggestFix(args);
+    case 'optimal_experiment':
+      return handleOptimalExperiment(args);
+    case 'check_hysteresis':
+      return handleCheckHysteresis(args);
+    case 'analyze_residuals':
+      return handleAnalyzeResiduals(args);
+    case 'check_phase_handoff':
+      return handleCheckPhaseHandoff(args);
+    case 'assess_model_maturity':
+      return handleAssessModelMaturity(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
