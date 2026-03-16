@@ -29,6 +29,8 @@ export interface FIMConfig {
   signal?: AbortSignal;
   /** Progress callback */
   onProgress?: (completed: number, total: number) => void;
+  /** Default step size for near-zero parameters (default: 1e-4) */
+  defaultStep?: number;
 }
 
 export interface FIMResult {
@@ -82,6 +84,7 @@ export async function computeFIM(config: FIMConfig): Promise<FIMResult> {
     approxProfile = false,
     signal,
     onProgress,
+    defaultStep = 1e-4,
   } = config;
 
   const d = parameterNames.length;
@@ -110,7 +113,9 @@ export async function computeFIM(config: FIMConfig): Promise<FIMResult> {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const pj = paramValues[j];
-    const delta = Math.max(Math.abs(pj) * h, 1e-12);
+    const delta = Math.abs(pj) > 1e-10
+        ? Math.abs(pj) * h
+        : defaultStep;
 
     // Forward
     const overridesPlus = { ...parameters };

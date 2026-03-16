@@ -307,7 +307,10 @@ export async function sobolSensitivity(config: SobolAnalysisConfig): Promise<Sob
       fB[i] = extractValue(resultsB[i]);
     }
 
-    const totalVariance = computeVariance(fA);
+    const fAll = new Float64Array(2 * N);
+    fAll.set(fA);
+    fAll.set(fB, N);
+    const totalVariance = computeVariance(fAll);
     if (totalVariance < 1e-30) {
       // No variance → all indices 0
       sobolResults.push({
