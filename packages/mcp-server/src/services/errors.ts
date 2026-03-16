@@ -29,6 +29,42 @@ export function structureError(error: Error): MCPErrorResult {
             relatedTools: ['simulate'],
         };
     }
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+        return {
+            error: msg,
+            diagnosis: 'Operation timed out — model may be too complex or parameters causing slow simulation.',
+            recovery: 'Reduce t_end, n_steps, or max_iterations. Consider using NFsim for stochastic simulation of large models.',
+            severity: 'recoverable',
+            relatedTools: ['diagnose_model', 'simulate'],
+        };
+    }
+    if (msg.includes('FIM') || msg.includes('singular') || msg.includes('determinant')) {
+        return {
+            error: msg,
+            diagnosis: 'Fisher Information Matrix is singular — parameters are not identifiable.',
+            recovery: 'The system is over-parameterized. Consider fixing some parameters or measuring different observables.',
+            severity: 'recoverable',
+            relatedTools: ['diagnose_model', 'identifiability_analysis'],
+        };
+    }
+    if (msg.includes('NFsim') || msg.includes('nfsim')) {
+        return {
+            error: msg,
+            diagnosis: 'NFsim incompatibility detected.',
+            recovery: 'NFsim does not support functional rates or certain rule patterns. Use ODE or SSA method instead.',
+            severity: 'recoverable',
+            relatedTools: ['simulate'],
+        };
+    }
+    if (msg.includes('export') || msg.includes('SED-ML') || msg.includes('SBML') || msg.includes('OMEX')) {
+        return {
+            error: msg,
+            diagnosis: 'Export failed — model may contain unsupported features.',
+            recovery: 'Check that the model does not use NFsim-specific features, functional rates, or complex compartment rules.',
+            severity: 'recoverable',
+            relatedTools: ['validate_model'],
+        };
+    }
     // Generic fallback
     return {
         error: msg,

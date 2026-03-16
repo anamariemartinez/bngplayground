@@ -2,6 +2,7 @@ import { NetworkGenerationLimitError, simulate, loadEvaluator } from '@bngplaygr
 import { ToolArgs, ToolResult } from '../types/index.js';
 import { simulateArgsSchema } from '../schemas/index.js';
 import { createToolResult, parseArgs, applyNetworkOptions, parseModelOrThrow, buildSimulationOptions, expandModel } from '../services/engine.js';
+import { structureError } from '../services/errors.js';
 
 export async function handleSimulate(args: ToolArgs): Promise<ToolResult<any>> {
     const parsedArgs = parseArgs('simulate', simulateArgsSchema, args);
@@ -32,10 +33,7 @@ export async function handleSimulate(args: ToolArgs): Promise<ToolResult<any>> {
                 last_rule: error.lastRule,
             });
         }
-        return createToolResult({
-            success: false,
-            stage,
-            error: error.message || 'Unknown simulation error',
-        });
+        const structured = structureError(error instanceof Error ? error : new Error(String(error)));
+        return createToolResult(structured);
     }
 }

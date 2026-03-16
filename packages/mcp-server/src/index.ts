@@ -423,7 +423,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
          name: 'diagnose_model',
-         description: 'Run deep diagnosis including structure, stiffness, simulation dynamics, and conservation hints.',
+         description: 'Automated diagnostic pipeline: structural analysis → stiffness classification → dynamic simulation → Sobol sensitivity → FIM → profile likelihood (when experimental data provided) → mechanistic causal tracing back to BNGL rules. Returns three-register summary (technical/biological/strategic), compilation surprise detection, irreversibility flagging, and biological plausibility checks.',
          inputSchema: {
            type: 'object',
            properties: {

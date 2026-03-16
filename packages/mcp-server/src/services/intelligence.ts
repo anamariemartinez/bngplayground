@@ -8,7 +8,7 @@ import {
     sobolSensitivity,
     loadEvaluator,
 } from '@bngplayground/engine';
-import { parseModelOrThrow, validateModel, cloneExpandedModel, updateMassActionRates, expandModel, buildSimulationOptions, extractMoleculeNames } from './engine.js';
+import { parseModelOrThrow, validateModel, cloneExpandedModel, updateMassActionRates, expandModel, buildSimulationOptions, extractMoleculeNames, findUnreachableRules } from './engine.js';
 import { handleSimulate } from '../handlers/simulate.js';
 import { handleGetContactMap } from '../handlers/getContactMap.js';
 import { BioParser } from './grammar/parser.js';
@@ -499,10 +499,25 @@ export function applyModelEdits(
                 if (!Number.isFinite(range) || range <= 0) {
                     throw new Error(`Invalid range for randomize_parameters: ${range}`);
                 }
-                // Placeholder: randomization requires external RNG or engine support
-                // This operation is P2 (post-paper) and currently only records intent
-                summary.push(`[P2 PLACEHOLDER] Would randomize parameters with range ${range}% (actual randomization not implemented yet)`);
-                parametricChanges++; // Count as parametric change
+                const ensured = ensureBlock(current, 'parameters');
+                const blockMatch = ensured.match(/begin\s+parameters([\s\S]*?)end\s+parameters/m);
+                if (!blockMatch) break;
+
+                const paramLines = blockMatch[1].split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+                let modified = 0;
+                for (const line of paramLines) {
+                    const parts = line.split(/\s+/);
+                    if (parts.length < 2) continue;
+                    const name = parts[0];
+                    const value = Number(parts[1]);
+                    if (!Number.isFinite(value)) continue;
+                    const factor = 1 + (range / 100) * (2 * Math.random() - 1);
+                    const newValue = value * factor;
+                    current = updateParameterLine(current, name, newValue);
+                    modified++;
+                }
+                summary.push(`Randomized ${modified} parameters within ±${range}% of original values`);
+                parametricChanges += modified;
                 break;
             }
             case 'set_scope': {
@@ -591,6 +606,62 @@ function detectOscillation(samples: number[]): boolean {
     }
 
     return signChanges >= 4;
+}
+
+function detectSurprises(
+    timeSeries: Array<Record<string, number>>,
+    observableNames: string[],
+): Array<{ observable: string; surprise: string; severity: 'low' | 'medium' | 'high' }> {
+    const surprises: Array<{ observable: string; surprise: string; severity: 'low' | 'medium' | 'high' }> = [];
+
+    for (const obs of observableNames) {
+        const values = timeSeries.map(row => Number(row[obs] ?? 0));
+        if (values.length < 4) continue;
+
+        const first = values[0];
+        const last = values[values.length - 1];
+        const max = Math.max(...values);
+        const min = Math.min(...values);
+        const range = max - min;
+        const scale = Math.max(1e-9, Math.abs(first), Math.abs(last));
+
+        // Overshoot: rises then falls (or falls then rises) by >20% of range
+        const maxIdx = values.indexOf(max);
+        if (maxIdx > 0 && maxIdx < values.length - 1 && (max - last) > 0.2 * range && range / scale > 0.05) {
+            surprises.push({
+                observable: obs,
+                surprise: `Overshoots at t=${timeSeries[maxIdx]?.time?.toFixed(1) ?? maxIdx} — peak ${max.toPrecision(3)} then settles to ${last.toPrecision(3)}.`,
+                severity: (max - last) > 0.5 * range ? 'high' : 'medium',
+            });
+        }
+
+        // Non-monotonic when you'd expect monotonic
+        let signChanges = 0;
+        for (let i = 2; i < values.length; i++) {
+            const d1 = values[i - 1] - values[i - 2];
+            const d2 = values[i] - values[i - 1];
+            if (d1 * d2 < 0 && Math.abs(d1) > 0.01 * scale && Math.abs(d2) > 0.01 * scale) signChanges++;
+        }
+        if (signChanges >= 3 && range / scale > 0.05) {
+            surprises.push({
+                observable: obs,
+                surprise: `Oscillates with ${signChanges} direction changes.`,
+                severity: signChanges >= 6 ? 'high' : 'medium',
+            });
+        }
+
+        // Near-zero sensitivity: observable barely changes
+        if (range / scale < 0.001 && Math.abs(first) > 1e-6) {
+            surprises.push({
+                observable: obs,
+                surprise: `Effectively constant (range ${range.toExponential(1)} vs magnitude ${first.toExponential(1)}) — may not be informative.`,
+                severity: 'low',
+            });
+        }
+
+        if (surprises.length >= 3) break;
+    }
+    return surprises.slice(0, 3);
 }
 
 // Three-register summary generation for diagnostic output
@@ -905,6 +976,16 @@ export async function diagnoseModelDeep(args: {
         physicalBound: number;
         message: string;
     }>;
+    unreachableAnalysis?: {
+        unreachableRules: string[];
+        count: number;
+        note: string;
+    };
+    surprises?: Array<{
+        observable: string;
+        surprise: string;
+        severity: 'low' | 'medium' | 'high';
+    }>;
 }> {
     if (!args.code) {
         throw new Error('No BNGL code provided for model diagnosis.');
@@ -913,6 +994,7 @@ export async function diagnoseModelDeep(args: {
     const model = parseModelOrThrow(args.code);
     const reactionRules = model.reactionRules ?? [];
     const validation = validateModel(model, false);
+    const unreachableRules = findUnreachableRules(model);
 
     const rateConstants = reactionRules.map((rule) => {
         if (rule.isFunctionalRate) {
@@ -945,6 +1027,8 @@ export async function diagnoseModelDeep(args: {
     const series = firstObservable
         ? timeSeries.map((row) => Number(row[firstObservable] ?? 0))
         : [];
+
+    const surprises = detectSurprises(timeSeries, observableNames);
 
     const conservationPreview = inferConservationHints(
         reactionRules.map((rule, index) => `${rule.name ?? `rule_${index + 1}`}: ${rule.reactants.join(' + ')} -> ${rule.products.join(' + ')}`),
@@ -1269,9 +1353,21 @@ export async function diagnoseModelDeep(args: {
                     ...(targetObservable ? { targetObservable } : {}),
                     ...(bestPath.length > 0 ? { topologyPath: bestPath } : {}),
                     ...(contactMapPath.length > 0 ? { contactMapPath } : {}),
-                    ...(contactMapPath.length > 0 || bestPath.length > 0 ? { 
-                        narrative: `${entry.name} governs ${implicatedRules[0]} via ${contactMapPath.length > 0 ? 'binding events' : 'molecular interactions'} affecting ${targetObservable || 'observables'}` 
-                    } : {}),
+                    narrative: (() => {
+                        if (contactMapPath.length > 0) {
+                            const steps = contactMapPath.map(step => {
+                                const siteStr = step.site ? `(${step.site})` : '';
+                                return `${step.molecule}${siteStr} [${step.interaction}]`;
+                            });
+                            return `${entry.name} governs ${implicatedRules[0] ?? 'a rule'}: ${steps.join(' → ')}` +
+                                (targetObservable ? ` → observed via ${targetObservable}` : '');
+                        } else if (bestPath.length > 0) {
+                            return `${entry.name} governs ${implicatedRules[0] ?? 'a rule'}: ` +
+                                bestPath.join(' → ') +
+                                (targetObservable ? ` → observed via ${targetObservable}` : '');
+                        }
+                        return undefined;
+                    })(),
                 };
             });
         }
@@ -1366,6 +1462,14 @@ export async function diagnoseModelDeep(args: {
         compilationSurprise,
         irreversibleSteps: irreversibleSteps.length > 0 ? irreversibleSteps : undefined,
         plausibilityChecks: plausibilityChecks.length > 0 ? plausibilityChecks : undefined,
+        ...(unreachableRules.length > 0 ? {
+            unreachableAnalysis: {
+                unreachableRules,
+                count: unreachableRules.length,
+                note: `${unreachableRules.length} rule(s) cannot fire — their reactants are unreachable from seed species.`,
+            }
+        } : {}),
+        ...(surprises.length > 0 ? { surprises } : {}),
         ...(sobolSummary ? { sobol: sobolSummary } : {}),
         ...(fimSummary ? { fim: fimSummary } : {}),
         ...(mechanisticCausalTrace ? { mechanisticCausalTrace } : {}),
@@ -1432,12 +1536,41 @@ export function explainModelNarrative(code: string): {
     }
 
     const moleculeList = Object.entries(moleculeRoles).map(([name, data]) => {
-        let role = 'substrate';
         const ruleList = Array.from(data.rules);
-        // Simple role inference: if molecule appears only as product, it's synthesized
-        // If it appears only as reactant, it's consumed/degraded
-        // If it appears in complex formation, it's a binder
-        // For now, just list participating rules
+        let role = 'generic';
+        let asReactantOnly = 0, asProductOnly = 0, asCatalyst = 0, inBinding = 0;
+
+        for (const rule of reactionRules) {
+            const ruleName = rule.name || 'unnamed';
+            if (!data.rules.has(ruleName)) continue;
+            const inReactants = rule.reactants.some(r => r.split('(')[0] === name);
+            const inProducts = rule.products.some(p => p.split('(')[0] === name);
+
+            if (inReactants && inProducts) {
+                const rStr = rule.reactants.find(r => r.split('(')[0] === name) ?? '';
+                const pStr = rule.products.find(p => p.split('(')[0] === name) ?? '';
+                if (rStr === pStr) asCatalyst++;
+            } else if (inReactants && !inProducts) {
+                asReactantOnly++;
+            } else if (!inReactants && inProducts) {
+                asProductOnly++;
+            }
+            if (inProducts && rule.products.some(p => p.includes('.') && p.includes(name))) {
+                inBinding++;
+            }
+        }
+
+        if (asCatalyst > 0 && asCatalyst >= asReactantOnly && asCatalyst >= asProductOnly) {
+            role = 'enzyme';
+        } else if (inBinding > ruleList.length / 2) {
+            role = 'scaffold';
+        } else if (asProductOnly > 0 && asReactantOnly === 0) {
+            role = 'product';
+        } else if (asReactantOnly > 0 && asProductOnly === 0) {
+            role = 'consumed';
+        } else {
+            role = 'substrate';
+        }
         return { name, role, rules: ruleList };
     });
 

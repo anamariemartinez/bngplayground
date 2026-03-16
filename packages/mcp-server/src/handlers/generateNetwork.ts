@@ -2,6 +2,7 @@ import { NetworkGenerationLimitError } from '@bngplayground/engine';
 import { ToolArgs, ToolResult } from '../types/index.js';
 import { generateNetworkArgsSchema } from '../schemas/index.js';
 import { createToolResult, parseArgs, applyNetworkOptions, parseModelOrThrow, expandModel } from '../services/engine.js';
+import { structureError } from '../services/errors.js';
 
 export async function handleGenerateNetwork(args: ToolArgs): Promise<ToolResult<any>> {
     const parsedArgs = parseArgs('generate_network', generateNetworkArgsSchema, args);
@@ -20,10 +21,7 @@ export async function handleGenerateNetwork(args: ToolArgs): Promise<ToolResult<
                 last_rule: error.lastRule,
             });
         }
-        return createToolResult({
-            success: false,
-            stage: 'network_expansion',
-            error: error.message || 'Unknown network expansion error',
-        });
+        const structured = structureError(error instanceof Error ? error : new Error(String(error)));
+        return createToolResult(structured);
     }
 }
