@@ -1,4 +1,4 @@
-import { extractMoleculeNames } from '../../services/engine.js';
+import { extractMoleculeNames } from '../../engine.js';
 
 export { extractMoleculeNames };
 
