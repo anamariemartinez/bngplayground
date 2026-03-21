@@ -59,6 +59,48 @@ export function safeModelName(name: string) {
     return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 }
 
+function stripLineComments(text: string): string {
+    return text
+        .split(/\r?\n/)
+        .map((line) => {
+            const idx = line.indexOf('#');
+            return idx >= 0 ? line.slice(0, idx) : line;
+        })
+        .join('\n');
+}
+
+function detectSimMethodFromCode(text: string): 'ode' | 'ssa' | 'nfsim' | 'unspecified' | 'missing' {
+    const stripped = stripLineComments(text);
+    if (!/\bsimulate(?:_ode|_ssa|_nf)?\s*\(/i.test(stripped)) return 'missing';
+
+    const lower = stripped.toLowerCase();
+    const compact = lower.replace(/\s+/g, '');
+    const hasSSA =
+        /simulate_ssa\s*\(/.test(lower) ||
+        compact.includes('method=>"ssa"') ||
+        compact.includes("method=>'ssa'");
+    const hasNF =
+        /simulate_nf\s*\(|nfsim\s*\(/.test(lower) ||
+        compact.includes('method=>"nf"') ||
+        compact.includes("method=>'nf'") ||
+        compact.includes('method=>"nfsim"') ||
+        compact.includes("method=>'nfsim'");
+    const hasODE =
+        /simulate_ode\s*\(/.test(lower) ||
+        compact.includes('method=>"ode"') ||
+        compact.includes("method=>'ode'");
+
+    if (hasSSA) return 'ssa';
+    if (hasNF) return 'nfsim';
+    if (hasODE) return 'ode';
+    return 'unspecified';
+}
+
+function hasOnlyOdeSimulationPhases(model: BNGLModel): boolean {
+    const phases = model.simulationPhases ?? [];
+    return phases.length > 0 && phases.every((phase) => phase.method === 'ode');
+}
+
 /**
  * Run simulation using the worker's native phase/action execution path.
  */
@@ -97,6 +139,14 @@ export async function runSingleBatchItem(
         const model: BNGLModel = await simulator.parse(code, { description: `Batch Parse: ${modelDef.name}` });
         if (verbose) reporter.timeEnd('Parse');
 
+        if (!hasOnlyOdeSimulationPhases(model)) {
+            const modelLabel = modelDef.id || modelDef.name;
+            const simMethod = detectSimMethodFromCode(code);
+            reporter.warn(`[Batch] Skipping ${modelLabel}: explicit ODE-only simulate actions required (detected: ${simMethod}).`);
+            reporter.groupEnd();
+            return false;
+        }
+
         // 1b. Network Generation
         const actions = model.actions || [];
         const needsNetGen = actions.some(a =>
@@ -129,10 +179,6 @@ export async function runSingleBatchItem(
         // 2. Simulate
         if (verbose) reporter.time('Simulate');
         model.simulationPhases = model.simulationPhases ?? [];
-        if (model.simulationPhases.length === 0) {
-            reporter.log(`[Batch] Auto-injecting default simulate action for ${model.name}`);
-            model.simulationPhases.push({ method: 'ode', t_end: 100, n_steps: 100 });
-        }
         const results: SimulationResults = await executeMultiPhaseSimulation(simulator, model, batchSeed);
         if (verbose) reporter.timeEnd('Simulate');
 

@@ -156,15 +156,15 @@ function buildBnglIndex(): NonNullable<typeof bnglIndex> {
 	const allFiles = listAllRuleHubModelFiles(PROJECT_ROOT);
 	for (const [priority, entry] of allFiles.entries()) {
 		const base = path.basename(entry.filePath, '.bngl');
-			const key = normalizeKey(base);
-			const fileRel = entry.relativePath;
-			const arr = idx.get(key) ?? [];
-			arr.push({ fileAbs: entry.filePath, source: entry.source, fileRel, priority });
-			idx.set(key, arr);
+		const key = normalizeKey(base);
+		const fileRel = entry.relativePath;
+		const arr = idx.get(key) ?? [];
+		arr.push({ fileAbs: entry.filePath, source: entry.source, fileRel, priority });
+		idx.set(key, arr);
 	}
 
 	// Prefer earlier roots and then shorter rel paths (more canonical-ish).
-	return { safeName, source: 'missing', status: 'source_missing', error: 'Model source not found in local RuleHub checkout' };
+	for (const [key, entries] of idx.entries()) {
 		entries.sort((a, b) => a.priority - b.priority || a.fileRel.length - b.fileRel.length || a.fileRel.localeCompare(b.fileRel));
 		idx.set(key, entries);
 	}

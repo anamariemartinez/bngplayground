@@ -231,9 +231,20 @@ jobs:
           NODE_ENV: test
           RULEHUB_ROOT: ${{ github.workspace }}/RuleHub
 
+      - name: Generate BNG2 reference outputs
+        run: npm run generate:gdat
+        env:
+          NODE_ENV: test
+          RULEHUB_ROOT: ${{ github.workspace }}/RuleHub
+          BNG2_PATH: ${{ env.BNG2_PATH }}
+          BNG2_PL: ${{ env.BNG2_PATH }}
+          BNGPATH: ${{ env.BNGPATH }}
+          NFSIM_PATH: ${{ env.NFSIM_PATH }}
+
       - name: Run reference validation suite
         run: npm run test:reference
         env:
+          BNG_OUTPUT_DIR: bng_test_output
           NODE_ENV: test
           RULEHUB_ROOT: ${{ github.workspace }}/RuleHub
           BNG2_PATH: ${{ env.BNG2_PATH }}

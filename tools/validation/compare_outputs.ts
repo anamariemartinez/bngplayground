@@ -41,6 +41,9 @@ interface ComparisonResult {
     columnMatch: boolean;
     missingColumns?: string[];
     extraColumns?: string[];
+    matchedColumns?: string[];
+    matchedColumnCount?: number;
+    totalDataColumnCount?: number;
     timeMatch: boolean;
     timeOffset?: number;
     maxRelativeError: number;
@@ -676,10 +679,22 @@ function getMultiPhaseReference(
     // Check column match (excluding 'time')
     const webCols = new Set(webHeadersNorm.filter(h => h !== 'time'));
     const refCols = new Set(refHeadersNorm.filter(h => h !== 'time'));
-    const columnMatch = [...webCols].every(c => refCols.has(c)) && [...refCols].every(c => webCols.has(c));
+    const matchedColumns = [...webCols].filter(c => refCols.has(c)).sort();
+    const totalDataColumnCount = webCols.size;
+    const minComparableColumns = Math.min(webCols.size, refCols.size);
+    const hasEnoughColumnCoverage =
+      minComparableColumns === 0 || matchedColumns.length >= Math.max(1, Math.ceil(minComparableColumns * 0.5));
+    const exactColumnSetMatch = [...webCols].every(c => refCols.has(c)) && [...refCols].every(c => webCols.has(c));
+    const columnMatch = exactColumnSetMatch && hasEnoughColumnCoverage;
 
     const missingColumns = [...refCols].filter(c => !webCols.has(c)).sort();
     const extraColumns = [...webCols].filter(c => !refCols.has(c)).sort();
+
+    if (!hasEnoughColumnCoverage && minComparableColumns > 0) {
+      console.warn(
+        `[compare] Low column coverage for ${modelName}: matched ${matchedColumns.length}/${totalDataColumnCount} web columns against ${refCols.size} reference columns.`
+      );
+    }
 
     let maxRelativeError = 0;
     let maxAbsoluteError = 0;
@@ -702,6 +717,9 @@ function getMultiPhaseReference(
         webColumns: webData.headers,
         refColumns: refData.headers,
         columnMatch: false,
+        matchedColumns,
+        matchedColumnCount: matchedColumns.length,
+        totalDataColumnCount,
         timeMatch: false,
         maxRelativeError: -1,
         maxAbsoluteError: -1,
@@ -872,6 +890,9 @@ function getMultiPhaseReference(
       columnMatch,
       missingColumns,
       extraColumns,
+      matchedColumns,
+      matchedColumnCount: matchedColumns.length,
+      totalDataColumnCount,
       timeMatch,
       timeOffset,
       maxRelativeError,
@@ -1224,6 +1245,9 @@ function getMultiPhaseReference(
         if (r.details) {
           console.log(`     Rows: web=${r.details.webRows}, ref=${r.details.refRows}`);
           console.log(`     Columns match: ${r.details.columnMatch}`);
+          if (typeof r.details.matchedColumnCount === 'number' && typeof r.details.totalDataColumnCount === 'number') {
+            console.log(`     Matched columns: ${r.details.matchedColumnCount}/${r.details.totalDataColumnCount}`);
+          }
           if (!r.details.columnMatch) {
             if ((r.details.missingColumns?.length ?? 0) > 0) {
               console.log(`     Missing columns (in web): ${r.details.missingColumns!.slice(0, 10).join(', ')}${r.details.missingColumns!.length > 10 ? ' ...' : ''}`);
@@ -1281,6 +1305,21 @@ function getMultiPhaseReference(
     const reportPath = path.join(PROJECT_ROOT, 'scripts', 'comparison_report_full.json');
     fs.writeFileSync(reportPath, JSON.stringify(results, null, 2));
     console.log(`Full report saved to: ${reportPath}`);
+
+    if (mismatches.length > 0) {
+      console.error(`${mismatches.length} model(s) had trajectory mismatches.`);
+      process.exit(1);
+    }
+    if (errors.length > 0) {
+      console.error(`${errors.length} model(s) failed during comparison.`);
+      process.exit(1);
+    }
+    if (matches.length === 0 && results.length > 0) {
+      console.error(
+        `FAIL: No models produced a successful comparison (${missing.length} missing reference, ${errors.length} errors). The reference pipeline may be broken.`
+      );
+      process.exit(1);
+    }
   }
 
 main().catch(console.error);

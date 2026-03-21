@@ -9,6 +9,8 @@ const PROJECT_ROOT = process.cwd();
 const WEB_OUTPUT_DIR = path.join(PROJECT_ROOT, 'web_output');
 const PORT = Number(process.env.WEB_OUTPUT_PORT || 5175);
 const DEFAULT_TIMEOUT_PER_MODEL_MS = Number(process.env.WEB_OUTPUT_TIMEOUT_MS || 120_000);
+const MIN_ATTEMPT_RATE = Number(process.env.WEB_OUTPUT_MIN_ATTEMPT_RATE || 0.8);
+const MIN_SUCCESS_RATE = Number(process.env.WEB_OUTPUT_MIN_SUCCESS_RATE || 0.5);
 const MODEL_TIMEOUT_OVERRIDES_MS = {
   lin_prion_2019: Number(process.env.WEB_OUTPUT_TIMEOUT_LIN_PRION_MS || 900_000), // 15 minutes
 };
@@ -169,6 +171,21 @@ async function waitForPageToSettleAfterNavigation(page, timeoutMs = 120_000) {
   await page.waitForFunction(() => typeof window.runModels === 'function', null, { timeout: timeoutMs });
 }
 
+async function applyBatchSeed(page) {
+  if (!Number.isFinite(WEB_OUTPUT_SEED)) return;
+  await page.evaluate((seed) => {
+    window.__batchSeed = seed;
+    console.log(`[BatchRunner] Using deterministic seed: ${seed}`);
+  }, WEB_OUTPUT_SEED);
+}
+
+async function initializeBatchPage(page) {
+  console.log('[generate:web-output] Opening app...');
+  await page.goto(BASE_URL, { timeout: 300000 });
+  await waitForPageToSettleAfterNavigation(page);
+  await applyBatchSeed(page);
+}
+
 function startViteDevServer() {
   const isWin = process.platform === 'win32';
   const command = `npm run dev -- --port ${PORT} --strictPort`;
@@ -272,26 +289,16 @@ async function main() {
 
     const headed = String(process.env.WEB_OUTPUT_HEADED || '').trim() === '1';
     const browser = await chromium.launch({ headless: !headed });
-    const context = await browser.newContext({ acceptDownloads: true });
-    const page = await context.newPage();
+    let context = await browser.newContext({ acceptDownloads: true });
+    let page = await context.newPage();
 
     const logPath = path.join(PROJECT_ROOT, 'browser_console.log');
     // Clear log file
     fs.writeFileSync(logPath, '');
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
-    page.on('console', msg => {
-      const text = msg.text();
-      console.log(`[browser] ${text}`);
-      logStream.write(`[browser] ${text}\n`);
-    });
-    page.on('pageerror', err => {
-      console.error('[browser error]', err);
-      logStream.write(`[browser error] ${err}\n`);
-    });
-
     let activeDownloads = 0;
-    page.on('download', (download) => {
+    const downloadHandler = (download) => {
       activeDownloads++;
       const suggested = download.suggestedFilename();
       const targetPath = path.join(WEB_OUTPUT_DIR, suggested);
@@ -302,18 +309,23 @@ async function main() {
         console.error(`[generate:web-output] Download failed: ${suggested}`, e);
         activeDownloads--;
       });
-    });
+    };
 
-    console.log('[generate:web-output] Opening app...');
-    await page.goto(BASE_URL, { timeout: 300000 });
-    await waitForPageToSettleAfterNavigation(page);
+    const attachPageHandlers = (targetPage) => {
+      targetPage.on('console', msg => {
+        const text = msg.text();
+        console.log(`[browser] ${text}`);
+        logStream.write(`[browser] ${text}\n`);
+      });
+      targetPage.on('pageerror', err => {
+        console.error('[browser error]', err);
+        logStream.write(`[browser error] ${err}\n`);
+      });
+      targetPage.on('download', downloadHandler);
+    };
 
-    if (Number.isFinite(WEB_OUTPUT_SEED)) {
-      await page.evaluate((seed) => {
-        window.__batchSeed = seed;
-        console.log(`[BatchRunner] Using deterministic seed: ${seed}`);
-      }, WEB_OUTPUT_SEED);
-    }
+    attachPageHandlers(page);
+    await initializeBatchPage(page);
 
     // Get full list of models from the app
     const allModels = await page.evaluate(() => {
@@ -386,17 +398,39 @@ async function main() {
         try {
           await page.reload();
           await waitForPageToSettleAfterNavigation(page);
+          await applyBatchSeed(page);
         } catch (reloadErr) {
-          console.error('[generate:web-output] Fatal: Could not reload page.', reloadErr);
-          break;
+          console.warn('[generate:web-output] Page reload failed. Creating fresh browser context...');
+          try {
+            await page.close().catch(() => {});
+            await context.close().catch(() => {});
+            context = await browser.newContext({ acceptDownloads: true });
+            page = await context.newPage();
+            attachPageHandlers(page);
+            await initializeBatchPage(page);
+            console.log('[generate:web-output] Fresh context ready. Continuing batch.');
+          } catch (freshErr) {
+            console.error('[generate:web-output] Fatal: Could not create fresh context.', freshErr);
+            break;
+          }
         }
       }
     }
 
     console.log(`\n[generate:web-output] Batch Complete. Success: ${successCount}, Failed: ${failCount}`);
+    const totalAttempted = successCount + failCount;
+    const skippedCount = modelsToRun.length - totalAttempted;
+    if (skippedCount > 0) {
+      console.error(`[generate:web-output] WARNING: ${skippedCount}/${modelsToRun.length} models were never attempted (early termination).`);
+    }
     await context.close();
     await browser.close();
-    succeeded = true;
+    const attemptRate = modelsToRun.length > 0 ? totalAttempted / modelsToRun.length : 0;
+    const successRate = totalAttempted > 0 ? successCount / totalAttempted : 0;
+    succeeded = attemptRate >= MIN_ATTEMPT_RATE && successRate >= MIN_SUCCESS_RATE;
+    if (!succeeded) {
+      console.error(`[generate:web-output] FAIL: attempt rate ${(attemptRate * 100).toFixed(0)}%, success rate ${(successRate * 100).toFixed(0)}%`);
+    }
 
   } catch (err) {
     console.error('[generate:web-output] Fatal Error:', err);
