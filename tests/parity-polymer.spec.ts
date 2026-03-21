@@ -30,7 +30,7 @@ describe.skipIf(!hasNFsim())('Polymer Model Parity', () => {
         }
     });
 
-    it('should parse and simulate polymer.bngl with NFsim', () => {
+    it('should parse and simulate polymer.bngl with NFsim', { timeout: 8 * 60 * 1000 }, () => {
         const bnglCode = fs.readFileSync(modelPath, 'utf-8');
 
         console.log('Parsing BNGL...');
@@ -114,7 +114,7 @@ describe.skipIf(!hasNFsim())('Polymer Model Parity', () => {
         console.log('Polymer parity test passed - NFsim successfully simulated compartmental model!');
     });
 
-    it('should be parseable by BNG2.pl', () => {
+    it('should be parseable by BNG2.pl', { timeout: 60_000 }, () => {
         // Verify that BNG2.pl can parse this model
         const bnglFileName = 'polymer_for_bng2.bngl';
         const bnglPath = path.join(testDir, bnglFileName);

@@ -137,6 +137,18 @@ jobs:
           # Verify binaries exist (don't fail here, tests will skip if not found)
           ls -la "${BNG_ROOT}/BNG2.pl" || true
           ls -la "${BNG_ROOT}/bin/NFsim" || true
+
+      - name: Build NFsim from source (ruleworld/nfsim HEAD)
+        run: |
+          git clone --depth 1 https://github.com/ruleworld/nfsim.git /tmp/nfsim-src
+          cd /tmp/nfsim-src
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j"$(nproc)"
+          cp /tmp/nfsim-src/build/NFsim "${BNGPATH}/bin/NFsim"
+          echo "NFSIM_PATH=${BNGPATH}/bin/NFsim" >> $GITHUB_ENV
+          "${BNGPATH}/bin/NFsim" -help >/dev/null || true
       
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -209,6 +221,18 @@ jobs:
           echo "BNG2_PATH=${BNG_ROOT}/BNG2.pl" >> $GITHUB_ENV
           echo "BNGPATH=${BNG_ROOT}" >> $GITHUB_ENV
           echo "NFSIM_PATH=${BNG_ROOT}/bin/NFsim" >> $GITHUB_ENV
+
+      - name: Build NFsim from source (ruleworld/nfsim HEAD)
+        run: |
+          git clone --depth 1 https://github.com/ruleworld/nfsim.git /tmp/nfsim-src
+          cd /tmp/nfsim-src
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j"$(nproc)"
+          cp /tmp/nfsim-src/build/NFsim "${BNGPATH}/bin/NFsim"
+          echo "NFSIM_PATH=${BNGPATH}/bin/NFsim" >> $GITHUB_ENV
+          "${BNGPATH}/bin/NFsim" -help >/dev/null || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -301,6 +325,18 @@ jobs:
           echo "BNG2_PATH=${BNG_ROOT}/BNG2.pl" >> $GITHUB_ENV
           echo "BNGPATH=${BNG_ROOT}" >> $GITHUB_ENV
           echo "NFSIM_PATH=${BNG_ROOT}/bin/NFsim" >> $GITHUB_ENV
+
+      - name: Build NFsim from source (ruleworld/nfsim HEAD)
+        run: |
+          git clone --depth 1 https://github.com/ruleworld/nfsim.git /tmp/nfsim-src
+          cd /tmp/nfsim-src
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j"$(nproc)"
+          cp /tmp/nfsim-src/build/NFsim "${BNGPATH}/bin/NFsim"
+          echo "NFSIM_PATH=${BNGPATH}/bin/NFsim" >> $GITHUB_ENV
+          "${BNGPATH}/bin/NFsim" -help >/dev/null || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
