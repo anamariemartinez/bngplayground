@@ -63,6 +63,7 @@
     "react-markdown": "^10.1.0",
     "recharts": "^3.3.0",
     "remark-gfm": "^4.0.1",
+    "three": "file:three-0.172.0.tgz",
     "umap-js": "^1.4.0"
   },
   "devDependencies": {
@@ -77,6 +78,7 @@
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^5.0.0",
     "@webgpu/types": "^0.1.68",
     "@xmldom/xmldom": "^0.8.11",

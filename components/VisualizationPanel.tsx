@@ -28,6 +28,8 @@ import { Dropdown, DropdownItem } from './ui/Dropdown';
 import { ChevronDownIcon } from './icons/ChevronDownIcon';
 import { EmptyState } from './ui/EmptyState';
 import { HelpSection } from './HelpSection';
+import { SpatialPanel } from './SpatialPanel';
+
 
 
 interface VisualizationPanelProps {
@@ -155,7 +157,8 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
   // 12: Jupyter Export
 
   // Map activeTab to a group for UI highlighting
-  const isAnalysisTab = (activeTab >= 2 && activeTab <= 9) || activeTab >= 11;
+  const isAnalysisTab = (activeTab >= 2 && activeTab <= 9) || activeTab >= 11 || activeTab === 17;
+
 
   // Filter parameter names to only those used in seed species (as requested by user)
   const seedParameterNames = React.useMemo(() => {
@@ -215,6 +218,9 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
               <div className="border-t border-slate-50 dark:border-slate-800/50 my-0.5" />
               <DropdownItem onClick={() => setActiveTab(10)}>🌎 Model Explorer</DropdownItem>
               <DropdownItem onClick={() => setActiveTab(12)}>📓 Jupyter Export</DropdownItem>
+              <div className="border-t border-slate-50 dark:border-slate-800/50 my-0.5" />
+              <DropdownItem onClick={() => setActiveTab(17)}>🔬 Spatial Simulation</DropdownItem>
+
             </Dropdown>
           </div>
 
@@ -689,6 +695,24 @@ export const VisualizationPanel: React.FC<VisualizationPanelProps> = ({
             />
             <div className="flex-1 min-h-0">
               <ABCSMCTab model={model} />
+            </div>
+          </div>
+        )}
+        {activeTab === 17 && (
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <HelpSection
+              title="Spatial Simulation"
+              description="Simulate your model in a 3D volume using particle-based Monte Carlo. Molecules diffuse, interact with compartment boundaries, and react upon collision."
+              features={[
+                "3D particle visualization (Three.js)",
+                "libBNG reaction resolution (WASM)",
+                "Auto-generated compartment geometry",
+                "Brownian dynamics (MCell4-compatible)"
+              ]}
+              plotDescription="Dots represent individual molecule instances. The simulation handles spatial exclusion and diffusion-limited reactions."
+            />
+            <div className="flex-1 min-h-0">
+              <SpatialPanel bnglText={bnglCode || ''} width={800} height={600} />
             </div>
           </div>
         )}

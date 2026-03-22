@@ -139,3 +139,6 @@ export { normInv, chi2Quantile, jacobiEigenDecomposition, matMul, matTranspose, 
 // ── ZIP Utils ───────────────────────────────────────────────────────
 export { createZip } from './utils/miniZip';
 export type { ZipEntry } from './utils/miniZip';
+
+// ── Spatial Simulation ─────────────────────────────────────────────
+export * from './services/spatial';
