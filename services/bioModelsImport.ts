@@ -1,5 +1,5 @@
 const BIOMODELS_PROXY_BASE = '/api/biomodels';
-const BIOMODELS_PUBLIC_BASE = 'https://www.biomodels.org/biomodels';
+const BIOMODELS_PUBLIC_BASE = 'https://www.biomodels.org';
 const ZIP_MAGIC_0 = 0x50;
 const ZIP_MAGIC_1 = 0x4b;
 const ZIP_MAGIC_2 = 0x03;
