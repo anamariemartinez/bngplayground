@@ -13,7 +13,14 @@ const MIN_ATTEMPT_RATE = Number(process.env.WEB_OUTPUT_MIN_ATTEMPT_RATE || 0.8);
 const MIN_SUCCESS_RATE = Number(process.env.WEB_OUTPUT_MIN_SUCCESS_RATE || 0.5);
 const MODEL_TIMEOUT_OVERRIDES_MS = {
   lin_prion_2019: Number(process.env.WEB_OUTPUT_TIMEOUT_LIN_PRION_MS || 900_000), // 15 minutes
+  jaruszewicz_blonska_2023: Number(process.env.WEB_OUTPUT_TIMEOUT_JARUSZEWICZ_BLONSKA_MS || 900_000), // 15 minutes
 };
+const GUARDED_MODEL_KEYS = new Set(
+  (process.env.WEB_OUTPUT_SKIP_MODELS || 'lin_prion_2019')
+    .split(',')
+    .map((s) => safeModelName(s))
+    .filter(Boolean)
+);
 
 function readViteBasePath() {
   const envBase = process.env.WEB_OUTPUT_BASE;
@@ -369,6 +376,14 @@ async function main() {
     for (const modelId of modelsToRun) {
       console.log(`\n--------------------------------------------------`);
       console.log(`[generate:web-output] Processing: ${modelId}`);
+
+      if (GUARDED_MODEL_KEYS.has(safeModelName(modelId))) {
+        console.log(`[generate:web-output] Model guard skip: ${modelId}`);
+        const skippedFile = path.join(WEB_OUTPUT_DIR, `results_${safeModelName(modelId)}.csv`);
+        fs.writeFileSync(skippedFile, 'Time,Observable\n# SKIPPED (ModelGuard)\n0,0');
+        successCount++;
+        continue;
+      }
 
       try {
         const timeoutMs = getTimeoutForModel(modelId);

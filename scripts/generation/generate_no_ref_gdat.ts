@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { listAllRuleHubModelFiles } from '../../tools/rulehubLocal';
+import { collectBnglFilesRecursive, listAllRuleHubModelFiles } from '../../tools/rulehubLocal';
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(THIS_DIR, '..', '..');
@@ -35,33 +35,30 @@ const BNG2_PL = process.env.BNG2_PL || process.env.BNG2_PATH || DEFAULT_BNG2_PL;
 const PERL = process.env.PERL || 'perl';
 const TIMEOUT_MS = Number(process.env.BNG2_TIMEOUT_MS || 300_000);
 
-const NO_REF_SAFE_NAMES = [
-	'abc',
-	'abp',
-	'abp_approx',
-	'ab_tutorial',
-	'bab',
-	'bab_coop',
-	'birth_death',
-	'fceri_ji',
-	'fceri_viz',
-	'gk',
-	'lisman',
-	'lr',
-	'lrr_comp',
-	'lr_comp',
-	'lv',
-	'organelle_transport',
-	'organelle_transport_struct',
-	'repressilator',
-	'sir',
-] as const;
+const PUBLIC_MODELS_DIR = path.join(PROJECT_ROOT, 'public', 'models');
 
-type NoRefName = (typeof NO_REF_SAFE_NAMES)[number];
+type ModelSource =
+	| 'rulehub-published'
+	| 'rulehub-example'
+	| 'rulehub-validation'
+	| 'rulehub-runtime'
+	| 'rulehub-tutorial'
+	| 'rulehub-pybionetgen'
+	| 'rulehub-other'
+	| 'public-models'
+	| 'missing';
+
+type ModelCandidate = {
+	safeName: string;
+	fileAbs: string;
+	source: Exclude<ModelSource, 'missing'>;
+	sourceId: string;
+	priority: number;
+};
 
 type GenerationResult = {
-	safeName: NoRefName;
-	source: 'rulehub-published' | 'rulehub-example' | 'rulehub-validation' | 'rulehub-runtime' | 'rulehub-tutorial' | 'rulehub-pybionetgen' | 'rulehub-other' | 'missing';
+	safeName: string;
+	source: ModelSource;
 	sourceId?: string;
 	status: 'generated' | 'skipped_exists' | 'bng2_failed' | 'source_missing';
 	elapsedMs?: number;
@@ -73,8 +70,12 @@ type GenerationResult = {
 	error?: string;
 };
 
-function normalizeKey(input: string): string {
-	return input.replace(/[^a-z0-9]/gi, '').toLowerCase();
+function toSafeName(filePath: string): string {
+	return path
+		.basename(filePath, path.extname(filePath))
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '_')
+		.replace(/^_+|_+$/g, '');
 }
 
 function ensureDir(dir: string) {
@@ -84,6 +85,20 @@ function ensureDir(dir: string) {
 function tail(str: string, maxChars = 4000): string {
 	if (str.length <= maxChars) return str;
 	return str.slice(-maxChars);
+}
+
+function hasUncommentedSimulateAction(code: string): boolean {
+	const uncommented = code
+		.split(/\r?\n/)
+		.map((line) => line.trimStart())
+		.filter((line) => !line.startsWith('#'))
+		.join('\n');
+	return /\b(simulate|simulate_ode)\s*\(/i.test(uncommented);
+}
+
+function appendDefaultOdeActions(code: string): string {
+	const cleaned = code.replace(/\s+$/, '');
+	return `${cleaned}\n\n# [auto-generated] Default ODE actions for reference generation\ngenerate_network({overwrite=>1})\nsimulate({method=>"ode",t_end=>100,n_steps=>100})\n`;
 }
 
 function sanitizeActionsKeepFirstOdeSimulateOnly(code: string): string {
@@ -124,92 +139,82 @@ function sanitizeActionsKeepFirstOdeSimulateOnly(code: string): string {
 	return `${before}\n${outLines.join('\n')}\n${after}`;
 }
 
-type ModelSource = Exclude<GenerationResult['source'], 'missing'>;
-
-const SAFE_NAME_ALIASES: Partial<Record<NoRefName, string[]>> = {
-	ab_tutorial: ['AB'],
-};
-
-let bnglIndex:
-	| Map<
-			string,
-			Array<{
-				fileAbs: string;
-				source: ModelSource;
-				fileRel: string;
-				priority: number;
-			}>
-		>
-	| undefined;
-
-function buildBnglIndex(): NonNullable<typeof bnglIndex> {
-	const idx = new Map<
-		string,
-		Array<{
-			fileAbs: string;
-			source: ModelSource;
-			fileRel: string;
-			priority: number;
-		}>
-	>();
-
-	const allFiles = listAllRuleHubModelFiles(PROJECT_ROOT);
-	for (const [priority, entry] of allFiles.entries()) {
-		const base = path.basename(entry.filePath, '.bngl');
-		const key = normalizeKey(base);
-		const fileRel = entry.relativePath;
-		const arr = idx.get(key) ?? [];
-		arr.push({ fileAbs: entry.filePath, source: entry.source, fileRel, priority });
-		idx.set(key, arr);
+function chooseBetterCandidate(left: ModelCandidate, right: ModelCandidate): ModelCandidate {
+	if (right.priority !== left.priority) {
+		return right.priority < left.priority ? right : left;
 	}
-
-	// Prefer earlier roots and then shorter rel paths (more canonical-ish).
-	for (const [key, entries] of idx.entries()) {
-		entries.sort((a, b) => a.priority - b.priority || a.fileRel.length - b.fileRel.length || a.fileRel.localeCompare(b.fileRel));
-		idx.set(key, entries);
+	if (right.sourceId.length !== left.sourceId.length) {
+		return right.sourceId.length < left.sourceId.length ? right : left;
 	}
-
-	return idx;
+	return right.sourceId.localeCompare(left.sourceId) < 0 ? right : left;
 }
 
-function getBnglIndex(): NonNullable<typeof bnglIndex> {
-	if (!bnglIndex) bnglIndex = buildBnglIndex();
-	return bnglIndex;
-}
+function discoverModelCandidates(): ModelCandidate[] {
+	const sourcePriority: Record<Exclude<ModelSource, 'missing'>, number> = {
+		'public-models': 0,
+		'rulehub-published': 1,
+		'rulehub-example': 2,
+		'rulehub-validation': 3,
+		'rulehub-runtime': 4,
+		'rulehub-tutorial': 5,
+		'rulehub-pybionetgen': 6,
+		'rulehub-other': 7,
+	};
 
-function loadModelCodeBySafeName(safeName: NoRefName): { code: string; source: GenerationResult['source']; sourceId?: string } {
-	const idx = getBnglIndex();
+	const bySafeName = new Map<string, ModelCandidate>();
 
-	const candidateKeys = new Set<string>();
-	candidateKeys.add(normalizeKey(safeName));
-	for (const alias of SAFE_NAME_ALIASES[safeName] ?? []) candidateKeys.add(normalizeKey(alias));
-
-	for (const key of candidateKeys) {
-		const entries = idx.get(key);
-		if (!entries || entries.length === 0) continue;
-		const chosen = entries[0];
-		const code = fs.readFileSync(chosen.fileAbs, 'utf8').replace(/^\uFEFF/, '');
-		return { code, source: chosen.source, sourceId: chosen.fileRel };
+	for (const entry of listAllRuleHubModelFiles(PROJECT_ROOT)) {
+		const safeName = toSafeName(entry.filePath);
+		if (!safeName) continue;
+		const candidate: ModelCandidate = {
+			safeName,
+			fileAbs: entry.filePath,
+			source: entry.source,
+			sourceId: entry.relativePath,
+			priority: sourcePriority[entry.source],
+		};
+		const existing = bySafeName.get(safeName);
+		bySafeName.set(safeName, existing ? chooseBetterCandidate(existing, candidate) : candidate);
 	}
 
-	return { code: '', source: 'missing' };
+	if (fs.existsSync(PUBLIC_MODELS_DIR)) {
+		for (const fileAbs of collectBnglFilesRecursive(PUBLIC_MODELS_DIR)) {
+			const safeName = toSafeName(fileAbs);
+			if (!safeName) continue;
+			const sourceId = path.relative(PROJECT_ROOT, fileAbs).replace(/\\/g, '/');
+			const candidate: ModelCandidate = {
+				safeName,
+				fileAbs,
+				source: 'public-models',
+				sourceId,
+				priority: sourcePriority['public-models'],
+			};
+			const existing = bySafeName.get(safeName);
+			bySafeName.set(safeName, existing ? chooseBetterCandidate(existing, candidate) : candidate);
+		}
+	}
+
+	return Array.from(bySafeName.values()).sort((a, b) => a.safeName.localeCompare(b.safeName));
 }
 
-function generateOne(safeName: NoRefName): GenerationResult {
-	const existingAny = ['.gdat', '.cdat', '.net'].some((ext) => fs.existsSync(path.join(BNG_TEST_OUTPUT_DIR, `${safeName}${ext}`)));
-	if (existingAny) {
+function generateOne(model: ModelCandidate): GenerationResult {
+	const safeName = model.safeName;
+	const hasReferenceGdat = fs.existsSync(path.join(BNG_TEST_OUTPUT_DIR, `${safeName}.gdat`));
+	if (hasReferenceGdat) {
 		return {
 			safeName,
-			source: 'missing',
+			source: model.source,
+			sourceId: model.sourceId,
 			status: 'skipped_exists',
-			error: 'At least one reference output already exists in bng_test_output/',
+			error: 'Reference .gdat already exists in bng_test_output/',
 		};
 	}
 
-	const loaded = loadModelCodeBySafeName(safeName);
-	if (loaded.source === 'missing') {
-		return { safeName, source: 'missing', status: 'source_missing', error: 'Model source not found in local RuleHub checkout' };
+	if (!fs.existsSync(model.fileAbs)) {
+		return { safeName, source: 'missing', status: 'source_missing', error: 'Model source file no longer exists' };
 	}
+
+	const loadedCode = fs.readFileSync(model.fileAbs, 'utf8').replace(/^\uFEFF/, '');
 
 	ensureDir(WORK_ROOT);
 	ensureDir(LOG_ROOT);
@@ -218,7 +223,10 @@ function generateOne(safeName: NoRefName): GenerationResult {
 	if (fs.existsSync(workDir)) fs.rmSync(workDir, { recursive: true, force: true });
 	ensureDir(workDir);
 
-	const sanitized = sanitizeActionsKeepFirstOdeSimulateOnly(loaded.code);
+	let sanitized = sanitizeActionsKeepFirstOdeSimulateOnly(loadedCode);
+	if (!hasUncommentedSimulateAction(sanitized)) {
+		sanitized = appendDefaultOdeActions(sanitized);
+	}
 
 	const bnglPath = path.join(workDir, `${safeName}.bngl`);
 	fs.writeFileSync(bnglPath, sanitized, 'utf8');
@@ -246,8 +254,8 @@ function generateOne(safeName: NoRefName): GenerationResult {
 		logFileAbs,
 		[
 			`SAFE_NAME: ${safeName}`,
-			`SOURCE: ${loaded.source}`,
-			`SOURCE_ID: ${loaded.sourceId ?? ''}`,
+			`SOURCE: ${model.source}`,
+			`SOURCE_ID: ${model.sourceId ?? ''}`,
 			`BNG2_PL: ${BNG2_PL}`,
 			`PERL: ${PERL}`,
 			`TIMEOUT_MS: ${TIMEOUT_MS}`,
@@ -266,8 +274,8 @@ function generateOne(safeName: NoRefName): GenerationResult {
 	if (res.status !== 0 || producedFiles.length === 0) {
 		return {
 			safeName,
-			source: loaded.source,
-			sourceId: loaded.sourceId,
+			source: model.source,
+			sourceId: model.sourceId,
 			status: 'bng2_failed',
 			elapsedMs,
 			exitStatus: res.status,
@@ -296,8 +304,8 @@ function generateOne(safeName: NoRefName): GenerationResult {
 
 	return {
 		safeName,
-		source: loaded.source,
-		sourceId: loaded.sourceId,
+		source: model.source,
+		sourceId: model.sourceId,
 		status: 'generated',
 		elapsedMs,
 		exitStatus: res.status,
@@ -324,13 +332,20 @@ function main() {
 	console.log('BNG2_PL:', BNG2_PL);
 	console.log('PERL:', PERL);
 	console.log('TIMEOUT_MS:', TIMEOUT_MS);
-	console.log('Count:', NO_REF_SAFE_NAMES.length);
+
+	const allCandidates = discoverModelCandidates();
+	const pendingCandidates = allCandidates.filter(
+		(model) => !fs.existsSync(path.join(BNG_TEST_OUTPUT_DIR, `${model.safeName}.gdat`))
+	);
+
+	console.log('Discovered .bngl candidates:', allCandidates.length);
+	console.log('Pending (missing .gdat):', pendingCandidates.length);
 	console.log();
 
 	const results: GenerationResult[] = [];
-	for (const name of NO_REF_SAFE_NAMES) {
-		console.log(`--- ${name} ---`);
-		const r = generateOne(name);
+	for (const model of pendingCandidates) {
+		console.log(`--- ${model.safeName} (${model.source}) ---`);
+		const r = generateOne(model);
 		results.push(r);
 		console.log(`Status: ${r.status}`);
 		if (r.error) console.log(`Error: ${r.error}`);
@@ -349,6 +364,8 @@ function main() {
 				bng2Pl: BNG2_PL,
 				perl: PERL,
 				timeoutMs: TIMEOUT_MS,
+				discoveredCount: allCandidates.length,
+				pendingCount: pendingCandidates.length,
 				results,
 			},
 			null,
