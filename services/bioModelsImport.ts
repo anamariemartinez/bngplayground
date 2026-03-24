@@ -1,5 +1,5 @@
-const BIOMODELS_DOWNLOAD_BASE = 'https://www.ebi.ac.uk/biomodels/model/download';
 const BIOMODELS_PROXY_BASE = '/api/biomodels';
+const BIOMODELS_PUBLIC_BASE = 'https://www.biomodels.org/biomodels';
 const ZIP_MAGIC_0 = 0x50;
 const ZIP_MAGIC_1 = 0x4b;
 const ZIP_MAGIC_2 = 0x03;
@@ -54,7 +54,7 @@ function shouldUseBioModelsProxy(): boolean {
 export function getBioModelsApiBase(): string {
   const explicitBase = getEnvString('VITE_BIOMODELS_API_BASE');
   if (explicitBase) return explicitBase.replace(/\/$/, '');
-  return shouldUseBioModelsProxy() ? BIOMODELS_PROXY_BASE : 'https://www.ebi.ac.uk/biomodels';
+  return shouldUseBioModelsProxy() ? BIOMODELS_PROXY_BASE : BIOMODELS_PUBLIC_BASE;
 }
 
 function getBioModelsDownloadBase(): string {
