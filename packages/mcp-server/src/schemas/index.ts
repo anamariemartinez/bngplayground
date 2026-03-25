@@ -36,4 +36,6 @@ export {
 export {
     fitParametersArgsSchema,
     diagnoseArgsSchema,
+    importPetabArgsSchema,
+    reduceModelArgsSchema,
 } from './advanced.js';

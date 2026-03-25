@@ -23,6 +23,7 @@ import type {
     FitResult,
     ParamBounds,
     ExperimentalDataPoint,
+    RegularizationConfig,
 } from '@bngplayground/engine';
 import { fitParameters as engineFitParameters } from '@bngplayground/engine';
 
@@ -48,6 +49,8 @@ export interface FitConfig {
     bpslConstraints?: string;
     /** Weight for BPSL penalty relative to SSE (default 1.0). */
     bpslWeight?: number;
+    /** Optional regularization config for L1/L2/elastic-net fitting. */
+    regularization?: RegularizationConfig;
     onProgress?: (p: FitProgress) => void;
     signal?: AbortSignal;
 }
@@ -65,7 +68,7 @@ export interface FitConfig {
 export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
     const {
         model, modelId, paramBounds, experimentalData,
-        algorithm, maxEval, ftol, bpslConstraints, bpslWeight, onProgress, signal,
+        algorithm, maxEval, ftol, bpslConstraints, bpslWeight, regularization, onProgress, signal,
     } = cfg;
 
     const timePoints = experimentalData.map(d => d.time);
@@ -93,6 +96,7 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
         ftol,
         bpslConstraints,
         bpslWeight,
+        regularization,
         onProgress,
         signal,
     };

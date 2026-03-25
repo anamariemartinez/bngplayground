@@ -14,6 +14,9 @@ import { parseExperimentalData, ExperimentalDataPoint } from '../../src/services
 import { fitParameters, FitAlgorithm } from '../../services/optimization/paramFitter';
 import { bnglService } from '../../services/bnglService';
 import { formatValue } from '../../src/utils/formatValue';
+import { parsePEtab, parsePEtabCombined } from '@bngplayground/engine';
+
+type PetabFileKey = 'parameters' | 'measurements' | 'conditions' | 'observables' | 'problem';
 
 interface ParameterEstimationTabProps {
   model: BNGLModel | null;
@@ -77,11 +80,17 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
   const [dataInput, setDataInput] = useState<string>(DEFAULT_TEST_DATA);
   const [parsedData, setParsedData] = useState<ExperimentalDataPoint[]>([]);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<'csv' | 'petab'>('csv');
+  const [petabText, setPetabText] = useState('');
+  const [petabFiles, setPetabFiles] = useState<Partial<Record<PetabFileKey, { name: string; content: string }>>>({});
+  const [fitInputData, setFitInputData] = useState<ExperimentalDataPoint[]>([]);
 
   // Estimation settings
   const [nIterations, setNIterations] = useState('500');
   const [algorithm, setAlgorithm] = useState<FitAlgorithm>('nelder-mead');
   const [bpslText, setBpslText] = useState('');
+  const [regType, setRegType] = useState<'none' | 'l1' | 'l2' | 'elastic-net'>('none');
+  const [regLambda, setRegLambda] = useState('0.01');
 
   // Results
   const [result, setResult] = useState<EstimationResult | null>(null);
@@ -192,7 +201,144 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
     return dataObsNames.filter(name => observableNames.includes(name));
   }, [dataObsNames, observableNames]);
 
-  const canRun = selectedParams.length > 0 && parsedData.length > 0 && sharedObsNames.length > 0 && !isRunning;
+  const hasRequiredPetabFiles = Boolean(petabFiles.parameters?.content && petabFiles.measurements?.content);
+  const buildPetabFileMap = useCallback(() => new Map<string, string>([
+    ['parameters.tsv', petabFiles.parameters?.content ?? ''],
+    ['measurements.tsv', petabFiles.measurements?.content ?? ''],
+    ...(petabFiles.conditions?.content ? [['conditions.tsv', petabFiles.conditions.content] as [string, string]] : []),
+    ...(petabFiles.observables?.content ? [['observables.tsv', petabFiles.observables.content] as [string, string]] : []),
+    ...(petabFiles.problem?.content ? [['problem.yaml', petabFiles.problem.content] as [string, string]] : []),
+  ]), [petabFiles]);
+
+  const petabPreview = useMemo(() => {
+    if (importMode !== 'petab') return null;
+    if (!hasRequiredPetabFiles && petabText.trim().length === 0) return null;
+
+    try {
+      const parsed = hasRequiredPetabFiles
+        ? parsePEtab(buildPetabFileMap())
+        : parsePEtabCombined(petabText);
+      const observableCount = Object.keys(parsed.measurements[0]?.values ?? {}).length;
+      return {
+        timePoints: parsed.measurements.length,
+        observableCount,
+        error: null as string | null,
+      };
+    } catch (err) {
+      return {
+        timePoints: 0,
+        observableCount: 0,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }, [importMode, hasRequiredPetabFiles, petabText, buildPetabFileMap]);
+
+  const hasDataInput = importMode === 'csv' ? parsedData.length > 0 : (hasRequiredPetabFiles || petabText.trim().length > 0);
+  const hasObservableOverlap = importMode === 'csv' ? sharedObsNames.length > 0 : true;
+  const canRun = selectedParams.length > 0 && hasDataInput && hasObservableOverlap && !isRunning;
+
+  const handlePetabFileUpload = async (
+    key: PetabFileKey,
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      setPetabFiles(prev => ({
+        ...prev,
+        [key]: { name: file.name, content },
+      }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Failed to read ${file.name}: ${message}`);
+    }
+  };
+
+  const clearCurrentInput = () => {
+    if (importMode === 'csv') {
+      setDataInput('');
+      return;
+    }
+    setPetabText('');
+    setPetabFiles({});
+  };
+
+  const handleAutoGenerateInput = async () => {
+    if (!model) return;
+
+    try {
+      const modelId = await bnglService.prepareModel(model);
+      const res = await bnglService.simulateCached(modelId, {}, {
+        method: 'ode',
+        t_end: model.simulationOptions.t_end || 10,
+        n_steps: model.simulationOptions.n_steps || 100,
+      });
+
+      const obsNames = model.observables.map(o => o.name);
+      const totalPoints = res.data.length;
+      const step = Math.max(1, Math.floor((totalPoints - 1) / 9));
+
+      const selectedIndices: number[] = [];
+      for (let i = 0; i < totalPoints; i += step) selectedIndices.push(i);
+      if (selectedIndices[selectedIndices.length - 1] !== totalPoints - 1) {
+        if (selectedIndices.length >= 10) selectedIndices[selectedIndices.length - 1] = totalPoints - 1;
+        else selectedIndices.push(totalPoints - 1);
+      }
+
+      if (importMode === 'csv') {
+        let csv = `time, ${obsNames.join(', ')}\n`;
+        for (const idx of selectedIndices) {
+          const row = res.data[idx];
+          const rowVals = [row.time.toFixed(4)];
+          for (const name of obsNames) {
+            const exact = row[name] ?? 0;
+            const noisy = exact * (1 + (Math.random() - 0.5) * 0.05);
+            rowVals.push(noisy.toFixed(4));
+          }
+          csv += rowVals.join(', ') + '\n';
+        }
+        setDataInput(csv);
+        return;
+      }
+
+      const paramRows = [
+        'parameterId\tparameterScale\tlowerBound\tupperBound\tnominalValue\testimate',
+        ...priors.map((p) => `${p.name}\tlin\t${p.min}\t${p.max}\t${p.mean}\t1`),
+      ];
+
+      const measRows = ['observableId\tsimulationConditionId\ttime\tmeasurement'];
+      for (const idx of selectedIndices) {
+        const row = res.data[idx];
+        for (const name of obsNames) {
+          const exact = row[name] ?? 0;
+          const noisy = exact * (1 + (Math.random() - 0.5) * 0.05);
+          measRows.push(`${name}\tdefault\t${row.time.toFixed(4)}\t${noisy.toFixed(6)}`);
+        }
+      }
+
+      const condRows = ['conditionId\tconditionName', 'default\tDefault'];
+      const parametersTsv = paramRows.join('\n');
+      const measurementsTsv = measRows.join('\n');
+      const conditionsTsv = condRows.join('\n');
+
+      setPetabFiles({
+        parameters: { name: 'parameters.tsv', content: parametersTsv },
+        measurements: { name: 'measurements.tsv', content: measurementsTsv },
+        conditions: { name: 'conditions.tsv', content: conditionsTsv },
+      });
+
+      setPetabText(
+        `[parameters]\n${parametersTsv}\n\n[measurements]\n${measurementsTsv}\n\n[conditions]\n${conditionsTsv}`,
+      );
+    } catch (e) {
+      console.error('Auto-generate failed', e);
+      if (importMode === 'csv') {
+        setDataInput(DEFAULT_TEST_DATA);
+      }
+    }
+  };
 
   const handleRunEstimation = async () => {
     if (!canRun || !model) return;
@@ -205,11 +351,6 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    const paramsSnapshot = [...selectedParams];
-    const priorMeansSnapshot = paramsSnapshot.map(
-      (name) => priors.find((p) => p.name === name)?.mean ?? 0
-    );
-
     try {
       const maxEval = parseInt(nIterations);
       setProgress({ current: 0, total: maxEval, elbo: 0 });
@@ -217,22 +358,59 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
       // Prepare cached model in worker to avoid re-parsing on every eval.
       const modelId = await bnglService.prepareModel(model);
 
-      const paramBounds = priors.map(p => ({
+      let effectiveData = parsedData;
+      let effectiveParamBounds = priors.map(p => ({
         name:    p.name,
         initial: p.mean,
         min:     p.min,
         max:     p.max,
       }));
 
+      if (importMode === 'petab') {
+        try {
+          const petab = hasRequiredPetabFiles
+            ? parsePEtab(buildPetabFileMap())
+            : parsePEtabCombined(petabText);
+
+          if (petab.warnings.length > 0) {
+            console.warn('[PEtab]', petab.warnings.join('; '));
+          }
+
+          if (petab.measurements.length === 0) {
+            setError('PEtab parse error: no measurements were parsed.');
+            return;
+          }
+          if (petab.paramBounds.length === 0) {
+            setError('PEtab parse error: no estimated parameters found (estimate=1).');
+            return;
+          }
+
+          effectiveData = petab.measurements;
+          effectiveParamBounds = petab.paramBounds;
+          setSelectedParams(petab.paramBounds.map((p) => p.name));
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          setError(`PEtab parse error: ${message}`);
+          return;
+        }
+      }
+
+      const paramsSnapshot = effectiveParamBounds.map((p) => p.name);
+      const priorMeansSnapshot = effectiveParamBounds.map((p) => p.initial);
+
       const fitResult = await fitParameters({
         model,
         modelId,
-        paramBounds,
-        experimentalData: parsedData,
+        paramBounds: effectiveParamBounds,
+        experimentalData: effectiveData,
         algorithm,
         maxEval,
         bpslConstraints: bpslText,
         bpslWeight: 1.0,
+        regularization: regType !== 'none' ? {
+          type: regType,
+          lambda: parseFloat(regLambda) || 0.01,
+        } : undefined,
         signal: controller.signal,
         onProgress: (p) => {
           if (isMountedRef.current) {
@@ -242,6 +420,7 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
       });
 
       if (isMountedRef.current) {
+        setFitInputData(effectiveData);
         const credibleIntervals = fitResult.confidenceIntervals;
         const posteriorStd = credibleIntervals.map(ci =>
           (ci.upper - ci.lower) / 2
@@ -339,9 +518,12 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
   }, [result]);
 
   const fitComparisonData = useMemo(() => {
-    if (!result?.bestPredictions || !parsedData) return [];
+    if (!result?.bestPredictions) return [];
 
-    return parsedData.map((d, i) => {
+    const sourceData = fitInputData.length > 0 ? fitInputData : parsedData;
+    if (sourceData.length === 0) return [];
+
+    return sourceData.map((d, i) => {
       const entry: any = { time: d.time };
       for (const [obsName, expVal] of Object.entries(d.values)) {
         entry[`${obsName} (Exp)`] = expVal;
@@ -351,7 +533,7 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
       }
       return entry;
     });
-  }, [result, parsedData]);
+  }, [result, fitInputData, parsedData]);
 
   const fitComparisonSeries = useMemo<TimeSeriesSeries[]>(() => {
     if (!result?.bestPredictions) return [];
@@ -503,6 +685,29 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
                 className="h-8 text-xs"
               />
             </div>
+            <div className="flex gap-2 items-center mt-2">
+              <label className="text-xs text-slate-600 dark:text-slate-400">Regularization:</label>
+              <select
+                className="text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1"
+                value={regType}
+                onChange={e => setRegType(e.target.value as 'none' | 'l1' | 'l2' | 'elastic-net')}
+              >
+                <option value="none">None</option>
+                <option value="l1">L1 / Lasso (sparsity)</option>
+                <option value="l2">L2 / Ridge (shrinkage)</option>
+                <option value="elastic-net">Elastic Net (both)</option>
+              </select>
+              {regType !== 'none' && (
+                <Input
+                  className="w-20 text-xs"
+                  type="number"
+                  step="0.001"
+                  value={regLambda}
+                  onChange={e => setRegLambda(e.target.value)}
+                  placeholder="lambda"
+                />
+              )}
+            </div>
             <div className="mt-3">
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
                 Qualitative Constraints (BPSL)
@@ -529,7 +734,7 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
           >
             {isRunning ? 'Running Estimation...' : 'Run Estimation'}
           </Button>
-          {!isRunning && parsedData.length > 0 && sharedObsNames.length === 0 && (
+          {!isRunning && importMode === 'csv' && parsedData.length > 0 && sharedObsNames.length === 0 && (
             <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 font-medium">
               ⚠️ Cannot run: The experimental data has no observables that match the current model. Check the column names!
             </p>
@@ -556,72 +761,133 @@ export const ParameterEstimationTab: React.FC<ParameterEstimationTabProps> = ({ 
                 <Button 
                   variant="subtle" 
                   className="h-6 px-2 text-[10px]" 
-                  onClick={async () => {
-                    if (!model) return;
-                    try {
-                      // Run a quick deterministic simulation to generate synthetic data
-                      const modelId = await bnglService.prepareModel(model);
-                      const res = await bnglService.simulateCached(modelId, {}, {
-                        method: 'ode',
-                        t_end: model.simulationOptions.t_end || 10,
-                        n_steps: model.simulationOptions.n_steps || 100,
-                      });
-                      
-                      const obsNames = model.observables.map(o => o.name);
-                      let csv = `time, ${obsNames.join(', ')}\n`;
-                      
-                      // We want 10 points
-                      const totalPoints = res.data.length;
-                      const step = Math.max(1, Math.floor((totalPoints - 1) / 9));
-                      
-                      const selectedIndices = [];
-                      for (let i = 0; i < totalPoints; i += step) selectedIndices.push(i);
-                      // Ensure the last point is always included if we didn't perfectly hit it
-                      if (selectedIndices[selectedIndices.length - 1] !== totalPoints - 1) {
-                         if (selectedIndices.length >= 10) selectedIndices[selectedIndices.length - 1] = totalPoints - 1;
-                         else selectedIndices.push(totalPoints - 1);
-                      }
-                      
-                      for (const idx of selectedIndices) {
-                        const row = res.data[idx];
-                        const rowVals = [row.time.toFixed(4)];
-                        for (const name of obsNames) {
-                           const exact = row[name] ?? 0;
-                           // +/- 2.5% random noise
-                           const noisy = exact * (1 + (Math.random() - 0.5) * 0.05);
-                           rowVals.push(noisy.toFixed(4));
-                        }
-                        csv += rowVals.join(', ') + '\n';
-                      }
-                      
-                      setDataInput(csv);
-                    } catch (e) {
-                      console.error("Auto-generate failed", e);
-                      setDataInput(DEFAULT_TEST_DATA); // fallback
-                    }
-                  }}
+                  onClick={handleAutoGenerateInput}
                 >
                   Auto-Generate
                 </Button>
-                <Button variant="subtle" className="h-6 px-2 text-[10px]" onClick={() => setDataInput('')}>Clear</Button>
+                <Button variant="subtle" className="h-6 px-2 text-[10px]" onClick={clearCurrentInput}>Clear</Button>
               </div>
             </div>
-            <textarea
-              value={dataInput}
-              onChange={e => setDataInput(e.target.value)}
-              className="w-full h-32 p-3 font-mono text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-teal-500 outline-none resize-none"
-              spellCheck={false}
-              placeholder="# time, Obs1, Obs2..."
-            />
+            <div className="flex gap-2 mb-2">
+              <button
+                type="button"
+                className={`text-xs px-2 py-1 rounded ${importMode === 'csv' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}`}
+                onClick={() => setImportMode('csv')}
+              >
+                CSV
+              </button>
+              <button
+                type="button"
+                className={`text-xs px-2 py-1 rounded ${importMode === 'petab' ? 'bg-indigo-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}`}
+                onClick={() => setImportMode('petab')}
+              >
+                PEtab
+              </button>
+            </div>
+
+            {importMode === 'csv' ? (
+              <textarea
+                value={dataInput}
+                onChange={e => setDataInput(e.target.value)}
+                className="w-full h-32 p-3 font-mono text-xs bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-md focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                spellCheck={false}
+                placeholder="# time, Obs1, Obs2..."
+              />
+            ) : (
+              <div className="space-y-2">
+                <textarea
+                  className="w-full h-32 text-xs font-mono rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 p-2"
+                  placeholder={`[parameters]\nparameterId\tlowerBound\tupperBound\tnominalValue\testimate\tparameterScale\nkf\t1e-5\t1e3\t0.1\t1\tlog10\nkr\t1e-5\t1e3\t0.01\t1\tlog10\n\n[measurements]\nobservableId\ttime\tmeasurement\nA\t0\t100\nA\t10\t67\nB\t0\t0\nB\t10\t33`}
+                  value={petabText}
+                  onChange={e => setPetabText(e.target.value)}
+                  spellCheck={false}
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px]">
+                  <div className="space-y-1">
+                    <div className="text-slate-600 dark:text-slate-400">Parameters TSV</div>
+                    <div className="flex items-center gap-2">
+                      <input id="petab-parameters-upload" type="file" accept=".tsv,.txt" className="sr-only" onChange={(e) => handlePetabFileUpload('parameters', e)} />
+                      <label htmlFor="petab-parameters-upload" className="inline-flex h-7 items-center rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 px-2 text-[10px] font-semibold text-slate-700 dark:text-slate-100 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                        Choose File
+                      </label>
+                      <span className="truncate text-slate-500 dark:text-slate-400">{petabFiles.parameters?.name ?? 'No file selected'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-slate-600 dark:text-slate-400">Measurements TSV</div>
+                    <div className="flex items-center gap-2">
+                      <input id="petab-measurements-upload" type="file" accept=".tsv,.txt" className="sr-only" onChange={(e) => handlePetabFileUpload('measurements', e)} />
+                      <label htmlFor="petab-measurements-upload" className="inline-flex h-7 items-center rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 px-2 text-[10px] font-semibold text-slate-700 dark:text-slate-100 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                        Choose File
+                      </label>
+                      <span className="truncate text-slate-500 dark:text-slate-400">{petabFiles.measurements?.name ?? 'No file selected'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-slate-600 dark:text-slate-400">Conditions TSV (optional)</div>
+                    <div className="flex items-center gap-2">
+                      <input id="petab-conditions-upload" type="file" accept=".tsv,.txt" className="sr-only" onChange={(e) => handlePetabFileUpload('conditions', e)} />
+                      <label htmlFor="petab-conditions-upload" className="inline-flex h-7 items-center rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 px-2 text-[10px] font-semibold text-slate-700 dark:text-slate-100 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                        Choose File
+                      </label>
+                      <span className="truncate text-slate-500 dark:text-slate-400">{petabFiles.conditions?.name ?? 'No file selected'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-slate-600 dark:text-slate-400">Observables TSV (optional)</div>
+                    <div className="flex items-center gap-2">
+                      <input id="petab-observables-upload" type="file" accept=".tsv,.txt" className="sr-only" onChange={(e) => handlePetabFileUpload('observables', e)} />
+                      <label htmlFor="petab-observables-upload" className="inline-flex h-7 items-center rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 px-2 text-[10px] font-semibold text-slate-700 dark:text-slate-100 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                        Choose File
+                      </label>
+                      <span className="truncate text-slate-500 dark:text-slate-400">{petabFiles.observables?.name ?? 'No file selected'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 md:col-span-2">
+                    <div className="text-slate-600 dark:text-slate-400">problem.yaml (optional)</div>
+                    <div className="flex items-center gap-2">
+                      <input id="petab-problem-upload" type="file" accept=".yaml,.yml,.txt" className="sr-only" onChange={(e) => handlePetabFileUpload('problem', e)} />
+                      <label htmlFor="petab-problem-upload" className="inline-flex h-7 items-center rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 px-2 text-[10px] font-semibold text-slate-700 dark:text-slate-100 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                        Choose File
+                      </label>
+                      <span className="truncate text-slate-500 dark:text-slate-400">{petabFiles.problem?.name ?? 'No file selected'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between text-[10px]">
-              <span className="text-slate-500 dark:text-slate-400">Observables: {observableNames.join(', ')}</span>
-              {dataError ? (
-                <span className="text-red-500 font-bold">{dataError}</span>
-              ) : parsedData.length > 0 ? (
-                <span className={`font-bold ${sharedObsNames.length > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
-                  {sharedObsNames.length > 0 ? `✓ ${parsedData.length} TP | ${sharedObsNames.length} Matching Obs` : `⚠️ No matching observables!`}
-                </span>
-              ) : <span className="text-slate-400">No data parsed</span>}
+              {importMode === 'csv' ? (
+                <>
+                  <span className="text-slate-500 dark:text-slate-400">Observables: {observableNames.join(', ')}</span>
+                  {dataError ? (
+                    <span className="text-red-500 font-bold">{dataError}</span>
+                  ) : parsedData.length > 0 ? (
+                    <span className={`font-bold ${sharedObsNames.length > 0 ? 'text-emerald-600' : 'text-amber-500'}`}>
+                      {sharedObsNames.length > 0 ? `✓ ${parsedData.length} TP | ${sharedObsNames.length} Matching Obs` : `⚠️ No matching observables!`}
+                    </span>
+                  ) : <span className="text-slate-400">No data parsed</span>}
+                </>
+              ) : (
+                <>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    PEtab mode ({hasRequiredPetabFiles ? 'using uploaded files' : 'using combined text'})
+                  </span>
+                  <span className="text-slate-400">
+                    {petabPreview?.error
+                      ? `Parse error: ${petabPreview.error}`
+                      : petabPreview
+                        ? `${petabPreview.timePoints} TP | ${petabPreview.observableCount} Obs`
+                        : Object.values(petabFiles).filter(Boolean).length > 0
+                          ? `${Object.values(petabFiles).filter(Boolean).length} file(s) loaded`
+                          : 'Parsed at run time'}
+                  </span>
+                </>
+              )}
             </div>
           </Card>
         )}

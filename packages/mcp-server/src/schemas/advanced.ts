@@ -19,3 +19,30 @@ export const fitParametersArgsSchema = z.object({
 export const diagnoseArgsSchema = z.object({
     code: z.string().describe('BNGL code to analyze'),
 }).strict();
+
+export const importPetabArgsSchema = z.object({
+    code: z.string().describe('BNGL model code'),
+    petab_parameters: z.string().describe('PEtab parameters TSV content'),
+    petab_measurements: z.string().describe('PEtab measurements TSV content'),
+    petab_conditions: z.string().optional().describe('PEtab conditions TSV content'),
+    algorithm: z.enum(['nelder-mead', 'sbplx', 'de']).default('nelder-mead'),
+    max_iterations: z.number().optional(),
+}).strict();
+
+export const reduceModelArgsSchema = z.object({
+    code: z.string().describe('BNGL model code'),
+    parameters: z.record(z.object({
+        min: z.number(),
+        max: z.number(),
+        initial: z.number().optional(),
+    })).describe('Parameters to fit (same as fit_parameters)'),
+    data: z.array(z.object({
+        time: z.number(),
+        observables: z.record(z.number()),
+    })).describe('Experimental data'),
+    lambda: z.number().default(0.01).describe('Regularization strength'),
+    regularization: z.enum(['l1', 'l2', 'elastic-net']).default('l1'),
+    prune_threshold: z.number().default(0.01).describe('Relative threshold for pruning (0.01 = 1% of nominal)'),
+    method: z.enum(['ode', 'ssa']).default('ode'),
+    max_iterations: z.number().default(1000),
+}).strict();

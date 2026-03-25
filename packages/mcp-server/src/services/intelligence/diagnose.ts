@@ -37,6 +37,7 @@ import { inferConservationHints, detectIrreversibleSteps } from './utils/ruleAna
 import { generateThreeRegisters } from './utils/summaryUtils.js';
 import { checkPlausibility, detectCompilationSurprise } from './utils/plausibilityUtils.js';
 import { normalizeWhitespace } from './utils/codeUtils.js';
+import { queryPathwayCommons } from '../pathwayCommons/pathwayCommonsService.js';
 import type { StiffnessResult, DynamicsResult, ProfileLikelihoodResult } from './types.js';
 
 export async function diagnoseModelDeep(args: {
@@ -80,6 +81,11 @@ export async function diagnoseModelDeep(args: {
     diminishingReturns?: { detected: boolean; message: string };
     convergenceAssessment?: { insightSaturated: boolean; recommendation: 'continue_analysis' | 'collect_more_data' | 'done'; message: string };
     crosstalkWarnings?: Array<{ molecule: string; pathways: number; rules: string[]; warning: string }>;
+    pathwayCommons?: {
+        summary: string;
+        confirmedInteractions: number;
+        missingInteractions: Array<{ source: string; type: string; target: string }>;
+    };
 }> {
     if (!args.code) {
         throw new Error('No BNGL code provided for model diagnosis.');
@@ -385,6 +391,29 @@ export async function diagnoseModelDeep(args: {
         mechanisticCausalTrace,
     });
 
+    let pathwayCommons: {
+        summary: string;
+        confirmedInteractions: number;
+        missingInteractions: Array<{ source: string; type: string; target: string }>;
+    } | undefined;
+
+    try {
+        const pcResult = await queryPathwayCommons(args.code);
+        if (pcResult.confirmedInteractions.length > 0 || pcResult.missingInteractions.length > 0) {
+            pathwayCommons = {
+                summary: pcResult.summary,
+                confirmedInteractions: pcResult.confirmedInteractions.length,
+                missingInteractions: pcResult.missingInteractions.slice(0, 5).map((interaction) => ({
+                    source: interaction.source,
+                    type: interaction.type,
+                    target: interaction.target,
+                })),
+            };
+        }
+    } catch {
+        // Non-fatal when network is unavailable or the API is unreachable.
+    }
+
     return {
         validation: { valid: validation.valid, errors: validation.summary.errors, warnings: validation.summary.warnings },
         structure: { species: model.species.length, reactionRules: reactionRules.length, observables: model.observables.length, parameters: Object.keys(model.parameters).length },
@@ -404,6 +433,7 @@ export async function diagnoseModelDeep(args: {
         ...(mechanisticCausalTrace ? { mechanisticCausalTrace } : {}),
         ...(parameterSelection ? { parameterSelection } : {}),
         ...(profileLikelihoodResult ? { profileLikelihood: profileLikelihoodResult } : {}),
+        ...(pathwayCommons ? { pathwayCommons } : {}),
         summary,
     };
 }

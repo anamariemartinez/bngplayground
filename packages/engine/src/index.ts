@@ -29,6 +29,10 @@ export { countEmbeddingDegeneracy } from './services/graph/core/degeneracy';
 // High-level graph algorithms
 export { NetworkGenerator, NetworkGenerationLimitError } from './services/graph/NetworkGenerator';
 export { NetworkExporter } from './services/graph/NetworkExporter';
+export { parseNetFile, loadNetFile } from './services/graph/NetParser';
+export type { NetFileParseResult } from './services/graph/NetParser';
+export { writeBNGL, writeBNGLFile } from './services/graph/BNGLWriter';
+export type { BNGLWriterOptions } from './services/graph/BNGLWriter';
 
 // ── Feature Flags ──────────────────────────────────────────────────
 export { getFeatureFlags, setFeatureFlags, registerCacheClearCallback } from './featureFlags';
@@ -76,6 +80,10 @@ export { roundForInput, DEFAULT_ZERO_DELTA, formatNumber, computeDefaultBounds, 
 export { fitParameters } from './services/analysis/paramFitter';
 export { MassBalance } from './services/analysis/MassBalance';
 export type { FitAlgorithm, ParamBounds, FitProgress, FitResult, FitConfig, ExperimentalDataPoint } from './services/analysis/paramFitter';
+export { parsePEtab, parsePEtabCombined } from './services/analysis/petabImport';
+export type { PEtabProblem, PEtabParameter, PEtabObservable } from './services/analysis/petabImport';
+export { computeRegularizationPenalty, pruneModel } from './services/analysis/regularization';
+export type { RegularizationType, RegularizationConfig, RegularizationPenalty, ModelReductionResult } from './services/analysis/regularization';
 export { parseBPSL, evaluateBPSL } from './services/analysis/bpsl';
 export type { BPSLConstraint, BPSLResult, BPSLConstraintResult, ConstraintType } from './services/analysis/bpsl';
 

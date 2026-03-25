@@ -2453,6 +2453,26 @@ export async function simulate(
             }
           }
 
+          // Check stop_if condition (BNG2 parity)
+          if (phase.stop_if) {
+            try {
+              // Build context with current observable values
+              const stopContext: Record<string, number> = { ...currentParams, time: t };
+              for (let k = 0; k < observables.length; k++) {
+                stopContext[observables[k].name] = observableValues[k];
+              }
+              // Evaluate the stop_if expression
+              const stopResult = evaluateExpressionOrParse(phase.stop_if, stopContext);
+              if (stopResult) {
+                console.log(`[Worker] Phase ${phaseIdx + 1}: stop_if condition met at step ${i}, t=${toBngGridTime(phaseStart, phaseDuration, phase_n_steps, i)}: ${phase.stop_if}`);
+                shouldStop = true;
+                break;
+              }
+            } catch (err: any) {
+              console.warn(`[Worker] Phase ${phaseIdx + 1}: stop_if evaluation failed: ${err.message}`);
+            }
+          }
+
           if (i % Math.ceil(phase_n_steps / 10) === 0) {
             const phaseProgress = (i / phase_n_steps) * 100;
             // Include simulation time (model time) where possible to help UI show a running time metric

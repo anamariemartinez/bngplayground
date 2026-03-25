@@ -147,6 +147,7 @@ export interface SimulationPhase {
     suffix?: string;
     sparse?: boolean;
     steady_state?: boolean;
+    stop_if?: string;  // Boolean expression to evaluate at each step; stop if true
     print_functions?: boolean;
     utl?: number;
     gml?: number;

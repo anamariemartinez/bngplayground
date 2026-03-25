@@ -32,25 +32,18 @@ import { handleParameterScan } from './handlers/parameterScan.js';
 import { handleValidateModel } from './handlers/validateModel.js';
 import { handleGetContactMap } from './handlers/getContactMap.js';
 import { handleFitParameters } from './handlers/fitParameters.js';
-import { handleDiagnose } from './handlers/diagnose.js';
+import { handleImportPetab } from './handlers/importPetab.js';
+import { handleReduceModel } from './handlers/reduceModel.js';
+import { handleQueryPathwayCommons } from './handlers/queryPathwayCommons.js';
 import { handleSobolSensitivity } from './handlers/sobolSensitivity.js';
-import { handleComputeFim } from './handlers/computeFim.js';
 import { handleIdentifiability } from './handlers/identifiability.js';
 import { handleBayesianInference } from './handlers/bayesianInference.js';
-import { handleExportSedml } from './handlers/exportSedml.js';
-import { handleExportOmex } from './handlers/exportOmex.js';
-import { handleExportSbml } from './handlers/exportSbml.js';
-import { handleSuggestAnnotations } from './handlers/suggestAnnotations.js';
+import { handleExportModel } from './handlers/exportModel.js';
 import { handleComposeModel } from './handlers/composeModel.js';
 import { handleEditModel } from './handlers/editModel.js';
 import { handleDiagnoseModel } from './handlers/diagnoseModel.js';
 import { handleExplainModel } from './handlers/explainModel.js';
-import { handleSuggestFix } from './handlers/suggestFix.js';
 import { handleOptimalExperiment } from './handlers/optimalExperiment.js';
-import { handleCheckHysteresis } from './handlers/checkHysteresis.js';
-import { handleAnalyzeResiduals } from './handlers/analyzeResiduals.js';
-import { handleCheckPhaseHandoff } from './handlers/checkPhaseHandoff.js';
-import { handleAssessModelMaturity } from './handlers/assessModelMaturity.js';
 
 const server = new Server(
   {
@@ -259,12 +252,60 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: 'diagnose',
-        description: 'Pre-flight check for model complexity, stiffness, and potential simulation issues',
+        name: 'import_petab',
+        description: 'Import a PEtab parameter estimation problem (parameters + measurements in TSV format) and run fitting against the BNGL model.',
         inputSchema: {
           type: 'object',
           properties: {
-            code: { type: 'string', description: 'BNGL code to analyze' },
+            code: { type: 'string', description: 'BNGL model code' },
+            petab_parameters: { type: 'string', description: 'PEtab parameters TSV content' },
+            petab_measurements: { type: 'string', description: 'PEtab measurements TSV content' },
+            petab_conditions: { type: 'string', description: 'PEtab conditions TSV content' },
+            algorithm: { type: 'string', enum: ['nelder-mead', 'sbplx', 'de'], default: 'nelder-mead' },
+            max_iterations: { type: 'number', description: 'Maximum iterations for the optimizer' },
+          },
+          required: ['code', 'petab_parameters', 'petab_measurements'],
+        },
+      },
+      {
+        name: 'reduce_model',
+        description: 'Fit parameters with L1 regularization and prune negligible rules to produce a reduced model. Based on PTLasso (Gupta, Lee & Faeder 2020).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'BNGL model code' },
+            parameters: { type: 'object', description: 'Map of parameter names to fitting bounds { min, max, initial? }' },
+            data: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  time: { type: 'number' },
+                  observables: { type: 'object' },
+                },
+                required: ['time', 'observables'],
+              },
+              description: 'Experimental data points',
+            },
+            lambda: { type: 'number', default: 0.01, description: 'Regularization strength' },
+            regularization: { type: 'string', enum: ['l1', 'l2', 'elastic-net'], default: 'l1' },
+            prune_threshold: { type: 'number', default: 0.01, description: 'Relative threshold for pruning' },
+            method: { type: 'string', enum: ['ode', 'ssa'], default: 'ode' },
+            max_iterations: { type: 'number', default: 1000 },
+          },
+          required: ['code', 'parameters', 'data'],
+        },
+      },
+      {
+        name: 'query_pathway_commons',
+        description: 'Query Pathway Commons for known interactions between molecules in the model. Returns confirmed interactions, missing interactions (candidates for new rules), and shared pathways.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: {
+              type: 'string',
+              description: 'BNGL model code. Molecule names are extracted and queried against Pathway Commons.',
+            },
           },
           required: ['code'],
         },
@@ -287,22 +328,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             n_steps: { type: 'number' },
           },
           required: ['code', 'parameters'],
-        },
-      },
-      {
-        name: 'compute_fim',
-        description: 'Compute the Fisher Information Matrix for parameter identifiability analysis. Returns eigenvalues, VIF, correlations, and optional collinearity index.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            parameters: { type: 'array', items: { type: 'string' }, description: 'Parameter names (default: all)' },
-            compute_collinearity: { type: 'boolean', description: 'Compute collinearity index' },
-            method: { type: 'string', enum: [...simulationMethods] },
-            t_end: { type: 'number' },
-            n_steps: { type: 'number' },
-          },
-          required: ['code'],
         },
       },
       {
@@ -339,56 +364,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: 'export_sedml',
-        description: 'Export a BNGL model as SED-ML L1V4 XML describing the simulation experiment.',
+        name: 'export_model',
+        description: 'Unified export surface. Choose format: sedml, omex, sbml, or annotations.',
         inputSchema: {
           type: 'object',
           properties: {
             code: { type: 'string', description: 'BNGL model code' },
+            format: { type: 'string', enum: ['sedml', 'omex', 'sbml', 'annotations'] },
             method: { type: 'string', enum: ['ode', 'ssa', 'nf'] },
             t_end: { type: 'number' },
             n_steps: { type: 'number' },
             observables: { type: 'array', items: { type: 'string' } },
-          },
-          required: ['code'],
-        },
-      },
-      {
-        name: 'export_omex',
-        description: 'Export a BNGL model as a COMBINE/OMEX archive (ZIP) containing model, SED-ML, and optional Dublin Core metadata.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
             model_name: { type: 'string' },
-            method: { type: 'string', enum: ['ode', 'ssa', 'nf'] },
             metadata: { type: 'object', properties: { title: { type: 'string' }, creators: { type: 'array', items: { type: 'string' } }, description: { type: 'string' } } },
+            annotate: { type: 'boolean' },
+            organism: { type: 'string' },
           },
-          required: ['code'],
-        },
-      },
-      {
-        name: 'export_sbml',
-        description: 'Export a BNGL model as BNGL-XML (closest to SBML available without atomizer).',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            annotate: { type: 'boolean', description: 'Include SBO/MIRIAM annotations' },
-          },
-          required: ['code'],
-        },
-      },
-      {
-        name: 'suggest_annotations',
-        description: 'Analyze model molecules and suggest MIRIAM/UniProt identifiers via external database lookup.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            organism: { type: 'string', description: 'Target organism (default: Homo sapiens)' },
-          },
-          required: ['code'],
+          required: ['code', 'format'],
         },
       },
       {
@@ -428,15 +420,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
          name: 'diagnose_model',
-         description: 'Automated diagnostic pipeline: structural analysis → stiffness classification → dynamic simulation → Sobol sensitivity → FIM → profile likelihood (when experimental data provided) → mechanistic causal tracing back to BNGL rules. Returns three-register summary (technical/biological/strategic), compilation surprise detection, irreversibility flagging, and biological plausibility checks.',
+         description: 'Unified diagnosis surface. Supports quick or deep analysis, optional fix suggestions, residual analysis, and maturity assessment in one tool.',
          inputSchema: {
            type: 'object',
            properties: {
              code: { type: 'string', description: 'BNGL model code' },
+             mode: { type: 'string', enum: ['quick', 'deep'], description: 'Quick mode runs lightweight checks; deep mode runs full diagnostics' },
              max_parameters: { type: 'number', description: 'Maximum number of parameters to include in Sobol/FIM sub-analysis (default: 5)' },
              method: { type: 'string', enum: [...simulationMethods], description: 'Simulation method used for dynamic probing' },
              t_end: { type: 'number', description: 'End time for dynamic probing simulation' },
              n_steps: { type: 'number', description: 'Number of simulation steps for dynamic probing' },
+             include_fix_suggestions: { type: 'boolean', description: 'Include validation-driven fix suggestions' },
+             include_residuals: { type: 'boolean', description: 'Include residual analysis when experimental_data is provided' },
+             include_maturity: { type: 'boolean', description: 'Include model maturity scoring' },
+             residual_parameters: { type: 'object', description: 'Optional parameter overrides for residual analysis' },
              experimental_data: {
                type: 'array',
                items: {
@@ -448,6 +445,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                },
                description: 'Experimental data for profile likelihood. When provided, enables identifiability classification.'
              },
+             validation_history: { type: 'array', items: { type: 'object' }, description: 'Optional validation records for maturity scoring' },
+             parameter_sources: { type: 'object', description: 'Optional parameter provenance map for maturity scoring' },
            },
            required: ['code'],
          },
@@ -465,18 +464,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: 'suggest_fix',
-        description: 'Suggest validation-driven fixes and optionally return auto-corrected BNGL code.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            include_auto_corrected_code: { type: 'boolean', description: 'Return suggested auto-corrected code when possible' },
-          },
-          required: ['code'],
-        },
-      },
-      {
         name: 'optimal_experiment',
         description: 'Suggest optimal experimental design for parameter identifiability using FIM analysis across candidate timepoints.',
         inputSchema: {
@@ -488,70 +475,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             n_samples: { type: 'number', description: 'Number of samples per experiment (default: 10)' },
             method: { type: 'string', enum: ['ode', 'ssa'], description: 'Simulation method' },
             t_end: { type: 'number', description: 'End time' },
-          },
-          required: ['code'],
-        },
-      },
-      {
-        name: 'check_hysteresis',
-        description: 'Detect hysteresis by comparing forward and backward parameter sweeps.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            parameter: { type: 'string', description: 'Parameter to vary' },
-            sweep_range: { type: 'array', items: { type: 'number' }, description: 'Min and max values for sweep' },
-            steps: { type: 'number', description: 'Number of sweep steps (default: 20)' },
-            observable: { type: 'string', description: 'Observable to analyze' },
-            method: { type: 'string', enum: ['ode', 'ssa'] },
-            t_end: { type: 'number', description: 'End time' },
-          },
-          required: ['code', 'parameter', 'sweep_range'],
-        },
-      },
-      {
-        name: 'analyze_residuals',
-        description: 'Analyze residuals between model simulation and experimental data with statistical diagnostics.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            experimental_data: { type: 'array', items: { type: 'object', properties: { time: { type: 'number' }, observables: { type: 'object' } } }, description: 'Experimental data points' },
-            parameters: { type: 'object', description: 'Model parameters to use' },
-            method: { type: 'string', enum: ['ode', 'ssa'] },
-            t_end: { type: 'number', description: 'End time' },
-          },
-          required: ['code', 'experimental_data'],
-        },
-      },
-      {
-        name: 'check_phase_handoff',
-        description: 'Analyze phase transition behavior when a parameter changes abruptly.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            parameter: { type: 'string', description: 'Parameter to change' },
-            initial_value: { type: 'number', description: 'Initial parameter value' },
-            final_value: { type: 'number', description: 'Final parameter value' },
-            transition_time: { type: 'number', description: 'Time to complete transition' },
-            observable: { type: 'string', description: 'Observable to track' },
-            method: { type: 'string', enum: ['ode', 'ssa'] },
-            t_end: { type: 'number', description: 'End time' },
-          },
-          required: ['code', 'parameter', 'initial_value', 'final_value', 'transition_time'],
-        },
-      },
-      {
-        name: 'assess_model_maturity',
-        description: 'Evaluate model maturity based on structure, validation, and experimental fit.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            code: { type: 'string', description: 'BNGL model code' },
-            has_experimental_data: { type: 'boolean', description: 'Model has been fitted to experimental data' },
-            n_parameters: { type: 'number', description: 'Number of fitted parameters' },
-            n_observables: { type: 'number', description: 'Number of measured observables' },
           },
           required: ['code'],
         },
@@ -577,24 +500,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       return handleGetContactMap(args);
     case 'fit_parameters':
       return handleFitParameters(args);
-    case 'diagnose':
-      return handleDiagnose(args);
+    case 'import_petab':
+      return handleImportPetab(args);
+    case 'reduce_model':
+      return handleReduceModel(args);
+    case 'query_pathway_commons':
+      return handleQueryPathwayCommons(args);
     case 'sobol_sensitivity':
       return handleSobolSensitivity(args);
-    case 'compute_fim':
-      return handleComputeFim(args);
     case 'identifiability_analysis':
       return handleIdentifiability(args);
     case 'bayesian_inference':
       return handleBayesianInference(args);
-    case 'export_sedml':
-      return handleExportSedml(args);
-    case 'export_omex':
-      return handleExportOmex(args);
-    case 'export_sbml':
-      return handleExportSbml(args);
-    case 'suggest_annotations':
-      return handleSuggestAnnotations(args);
+    case 'export_model':
+      return handleExportModel(args);
     case 'compose_model':
       return handleComposeModel(args);
     case 'edit_model':
@@ -603,18 +522,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name
       return handleDiagnoseModel(args);
     case 'explain_model':
       return handleExplainModel(args);
-    case 'suggest_fix':
-      return handleSuggestFix(args);
     case 'optimal_experiment':
       return handleOptimalExperiment(args);
-    case 'check_hysteresis':
-      return handleCheckHysteresis(args);
-    case 'analyze_residuals':
-      return handleAnalyzeResiduals(args);
-    case 'check_phase_handoff':
-      return handleCheckPhaseHandoff(args);
-    case 'assess_model_maturity':
-      return handleAssessModelMaturity(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

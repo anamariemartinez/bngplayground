@@ -9,6 +9,8 @@ import { differentialEvolution } from '../optimization/differentialEvolution';
 import type { DEProgress } from '../optimization/differentialEvolution';
 import { parseBPSL, evaluateBPSL } from './bpsl';
 import type { BPSLConstraint, BPSLResult } from './bpsl';
+import { computeRegularizationPenalty } from './regularization';
+import type { RegularizationConfig } from './regularization';
 
 // ---------------------------------------------------------------------------
 // Types (intentional match of UI-side names)
@@ -50,6 +52,10 @@ export interface FitResult {
   algorithm: string;
   /** BPSL constraint results at best-fit parameters (if constraints were specified). */
   bpslResults?: BPSLResult;
+  /** Regularization penalty at best-fit (if regularization was used). */
+  regularizationPenalty?: number;
+  /** Per-parameter regularization breakdown. */
+  regularizationPerParam?: Record<string, number>;
 }
 
 export interface FitConfig {
@@ -74,6 +80,8 @@ export interface FitConfig {
   bpslConstraints?: string;
   /** Weight for BPSL penalty relative to SSE (default 1.0). */
   bpslWeight?: number;
+  /** L1/L2 regularization for model reduction (PTLasso-style). */
+  regularization?: RegularizationConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +102,7 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
     simOptions = {},
     bpslConstraints,
     bpslWeight = 1.0,
+    regularization,
   } = cfg;
 
   const constraints: BPSLConstraint[] = (bpslConstraints ?? '').trim()
@@ -177,6 +186,16 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
         }
         const bpslResult = evaluateBPSL(constraints, timePoints, obsMap);
         sse += bpslWeight * bpslResult.totalPenalty;
+      }
+
+      if (regularization && regularization.type !== 'none') {
+        const regResult = computeRegularizationPenalty(
+          params,
+          paramNames,
+          paramBounds.map(b => b.initial),
+          regularization,
+        );
+        sse += regResult.penalty;
       }
 
       nEval++;
@@ -289,6 +308,16 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
               sse += bpslWeight * bpslResult.totalPenalty;
             }
 
+            if (regularization && regularization.type !== 'none') {
+              const regResult = computeRegularizationPenalty(
+                x,
+                paramNames,
+                paramBounds.map(b => b.initial),
+                regularization,
+              );
+              sse += regResult.penalty;
+            }
+
             return isFinite(sse) ? sse : 1e12;
           } catch {
             return 1e12;
@@ -349,6 +378,8 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
   const bestPredictions = new Map<string, number[]>();
   let finalSse = nmResult.value;
   let bpslResults: BPSLResult | undefined;
+  let regularizationPenalty: number | undefined;
+  let regularizationPerParam: Record<string, number> | undefined;
 
   try {
     const finalSim = await simulate(bestOverrides, {
@@ -399,6 +430,18 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
       sse += bpslWeight * bpslResults.totalPenalty;
     }
 
+    if (regularization && regularization.type !== 'none') {
+      const regResult = computeRegularizationPenalty(
+        bestParams,
+        paramNames,
+        paramBounds.map(b => b.initial),
+        regularization,
+      );
+      regularizationPenalty = regResult.penalty;
+      regularizationPerParam = Object.fromEntries(regResult.perParameter);
+      sse += regResult.penalty;
+    }
+
     finalSse = sse;
   } catch {
     /* keep nmResult.value */
@@ -439,6 +482,8 @@ export async function fitParameters(cfg: FitConfig): Promise<FitResult> {
     confidenceIntervals,
     algorithm,
     bpslResults,
+    regularizationPenalty,
+    regularizationPerParam,
   };
 }
 
