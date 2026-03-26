@@ -7,7 +7,7 @@
 
 **Live demo:** <https://ruleworld.github.io/bngplayground>
 
-## Features
+## Features !
 
 - BNGL editor + parser (client-side ANTLR4)
 - Network generation and simulation in the browser (Web Worker + WASM)
