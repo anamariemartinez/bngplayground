@@ -15,6 +15,7 @@ import { BNGLModel, SimulationOptions, SimulationResults, Status, ValidationWarn
 import { loadModelCode, setCachedCode, getCachedCode } from './services/modelLoader';
 import { loadModelCatalog, getModelCatalogSync, findCatalogExampleByQuery, type CatalogExample } from './services/modelCatalog';
 
+import pandas as pd
 import SimulationModal from './components/SimulationModal';
 import { BNGLParser } from '@bngplayground/engine';
 import { validateBNGLModel, validationWarningsToMarkers } from './services/modelValidation';
