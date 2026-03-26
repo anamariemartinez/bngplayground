@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 import { pipeline } from '@xenova/transformers';
 
 // Import canonical categories from constants.ts for consistent tagging
-import { MODEL_CATEGORIES } from '../../constants.ts';
+import { MODEL_CATEGORIES } from '../../src/constants.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../../');
