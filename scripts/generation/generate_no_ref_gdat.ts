@@ -12,11 +12,15 @@
  *   - BNG2_PL or BNG2_PATH: path to BNG2.pl
  *   - PERL: perl executable (default: perl)
  *   - BNG2_TIMEOUT_MS: per-model timeout (default: 300000)
+ *   - BNG_MODEL_TIMEOUT_MS: shared per-model timeout (default: 60000)
+ *   - BNG2_TIMEOUT_MS: legacy fallback timeout (default: 60000)
+ *   - BNG_CONCURRENCY: number of concurrent BNG2 workers (default: 4)
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
+import { once } from 'events';
 import { fileURLToPath } from 'url';
 import { collectBnglFilesRecursive, listAllRuleHubModelFiles } from '../../tools/rulehubLocal';
 
@@ -33,7 +37,8 @@ const DEFAULT_BNG2_PL =
 
 const BNG2_PL = process.env.BNG2_PL || process.env.BNG2_PATH || DEFAULT_BNG2_PL;
 const PERL = process.env.PERL || 'perl';
-const TIMEOUT_MS = Number(process.env.BNG2_TIMEOUT_MS || 300_000);
+const TIMEOUT_MS = Number(process.env.BNG_MODEL_TIMEOUT_MS || process.env.BNG2_TIMEOUT_MS || 60_000);
+const CONCURRENCY = Math.max(1, Number(process.env.BNG_CONCURRENCY || 4));
 
 const PUBLIC_MODELS_DIR = path.join(PROJECT_ROOT, 'public', 'models');
 
@@ -197,7 +202,63 @@ function discoverModelCandidates(): ModelCandidate[] {
 	return Array.from(bySafeName.values()).sort((a, b) => a.safeName.localeCompare(b.safeName));
 }
 
-function generateOne(model: ModelCandidate): GenerationResult {
+type Bng2RunResult = {
+	status: number | null;
+	signal: NodeJS.Signals | null;
+	stdout: string;
+	stderr: string;
+	timedOut: boolean;
+	errorMessage?: string;
+};
+
+async function runBng2Process(workDir: string, bnglPath: string): Promise<Bng2RunResult> {
+	const child = spawn(PERL, [BNG2_PL, path.basename(bnglPath)], {
+		cwd: workDir,
+		windowsHide: true,
+		stdio: ['ignore', 'pipe', 'pipe'],
+		shell: false,
+	});
+
+	let stdout = '';
+	let stderr = '';
+	let timedOut = false;
+	let spawnError: string | undefined;
+
+	child.stdout?.setEncoding('utf8');
+	child.stderr?.setEncoding('utf8');
+	child.stdout?.on('data', (chunk) => {
+		stdout += String(chunk);
+	});
+	child.stderr?.on('data', (chunk) => {
+		stderr += String(chunk);
+	});
+	child.on('error', (err) => {
+		spawnError = err.message;
+	});
+
+	const timer = setTimeout(() => {
+		timedOut = true;
+		try {
+			child.kill();
+		} catch {
+			// Best effort timeout kill
+		}
+	}, TIMEOUT_MS);
+
+	const [status, signal] = (await once(child, 'close')) as [number | null, NodeJS.Signals | null];
+	clearTimeout(timer);
+
+	return {
+		status,
+		signal,
+		stdout,
+		stderr,
+		timedOut,
+		errorMessage: spawnError,
+	};
+}
+
+async function generateOne(model: ModelCandidate): Promise<GenerationResult> {
 	const safeName = model.safeName;
 	const hasReferenceGdat = fs.existsSync(path.join(BNG_TEST_OUTPUT_DIR, `${safeName}.gdat`));
 	if (hasReferenceGdat) {
@@ -232,16 +293,10 @@ function generateOne(model: ModelCandidate): GenerationResult {
 	fs.writeFileSync(bnglPath, sanitized, 'utf8');
 
 	const t0 = Date.now();
-	const res = spawnSync(PERL, [BNG2_PL, path.basename(bnglPath)], {
-		cwd: workDir,
-		encoding: 'utf8',
-		timeout: TIMEOUT_MS,
-		maxBuffer: 1024 * 1024 * 200,
-		windowsHide: true,
-	});
+	const res = await runBng2Process(workDir, bnglPath);
 	const elapsedMs = Date.now() - t0;
 
-	const timedOut = Boolean(res.error && (res.error as any).code === 'ETIMEDOUT');
+	const timedOut = res.timedOut;
 	const stdout = res.stdout || '';
 	const stderr = res.stderr || '';
 
@@ -264,6 +319,7 @@ function generateOne(model: ModelCandidate): GenerationResult {
 			`SIGNAL: ${res.signal}`,
 			`TIMED_OUT: ${timedOut}`,
 			`ELAPSED_MS: ${elapsedMs}`,
+			`SPAWN_ERROR: ${res.errorMessage ?? ''}`,
 			`PRODUCED: ${producedFiles.join(', ')}`,
 			`\n=== STDOUT (tail) ===\n${tail(stdout)}`,
 			`\n=== STDERR (tail) ===\n${tail(stderr)}`,
@@ -271,7 +327,7 @@ function generateOne(model: ModelCandidate): GenerationResult {
 		'utf8'
 	);
 
-	if (res.status !== 0 || producedFiles.length === 0) {
+	if (res.status !== 0 || producedFiles.length === 0 || res.errorMessage) {
 		return {
 			safeName,
 			source: model.source,
@@ -282,7 +338,7 @@ function generateOne(model: ModelCandidate): GenerationResult {
 			timedOut,
 			producedFiles,
 			logFile: logRel,
-			error: timedOut ? 'BNG2.pl timed out' : 'BNG2.pl failed or produced no outputs',
+			error: timedOut ? 'BNG2.pl timed out' : (res.errorMessage || 'BNG2.pl failed or produced no outputs'),
 		};
 	}
 
@@ -316,7 +372,33 @@ function generateOne(model: ModelCandidate): GenerationResult {
 	};
 }
 
-function main() {
+async function processPool(models: ModelCandidate[], concurrency: number): Promise<GenerationResult[]> {
+	const workers = Math.max(1, Number.isFinite(concurrency) ? Math.floor(concurrency) : 1);
+	const results: Array<GenerationResult | undefined> = new Array(models.length);
+	let idx = 0;
+
+	async function worker(): Promise<void> {
+		while (true) {
+			const current = idx++;
+			if (current >= models.length) return;
+			const model = models[current];
+			console.log(`--- [${current + 1}/${models.length}] ${model.safeName} (${model.source}) ---`);
+			const r = await generateOne(model);
+			results[current] = r;
+			console.log(`Status: ${r.status}`);
+			if (r.error) console.log(`Error: ${r.error}`);
+			if (r.producedFiles?.length) console.log(`Produced: ${r.producedFiles.join(', ')}`);
+			if (r.copiedFiles?.length) console.log(`Copied: ${r.copiedFiles.join(', ')}`);
+			if (r.logFile) console.log(`Log: ${r.logFile}`);
+			console.log();
+		}
+	}
+
+	await Promise.all(Array.from({ length: workers }, () => worker()));
+	return results.filter((r): r is GenerationResult => Boolean(r));
+}
+
+async function main() {
 	ensureDir(SESSION_DIR);
 	ensureDir(WORK_ROOT);
 	ensureDir(LOG_ROOT);
@@ -332,6 +414,7 @@ function main() {
 	console.log('BNG2_PL:', BNG2_PL);
 	console.log('PERL:', PERL);
 	console.log('TIMEOUT_MS:', TIMEOUT_MS);
+	console.log('CONCURRENCY:', CONCURRENCY);
 
 	const allCandidates = discoverModelCandidates();
 	const pendingCandidates = allCandidates.filter(
@@ -342,18 +425,7 @@ function main() {
 	console.log('Pending (missing .gdat):', pendingCandidates.length);
 	console.log();
 
-	const results: GenerationResult[] = [];
-	for (const model of pendingCandidates) {
-		console.log(`--- ${model.safeName} (${model.source}) ---`);
-		const r = generateOne(model);
-		results.push(r);
-		console.log(`Status: ${r.status}`);
-		if (r.error) console.log(`Error: ${r.error}`);
-		if (r.producedFiles?.length) console.log(`Produced: ${r.producedFiles.join(', ')}`);
-		if (r.copiedFiles?.length) console.log(`Copied: ${r.copiedFiles.join(', ')}`);
-		if (r.logFile) console.log(`Log: ${r.logFile}`);
-		console.log();
-	}
+	const results = await processPool(pendingCandidates, CONCURRENCY);
 
 	const summaryPath = path.join(SESSION_DIR, 'generated_no_ref_gdat_summary.json');
 	fs.writeFileSync(
@@ -364,6 +436,7 @@ function main() {
 				bng2Pl: BNG2_PL,
 				perl: PERL,
 				timeoutMs: TIMEOUT_MS,
+				concurrency: CONCURRENCY,
 				discoveredCount: allCandidates.length,
 				pendingCount: pendingCandidates.length,
 				results,
@@ -384,4 +457,7 @@ function main() {
 	console.log('Summary:', path.relative(PROJECT_ROOT, summaryPath).replace(/\\/g, '/'));
 }
 
-main();
+main().catch((err) => {
+	console.error('[generate:gdat] Fatal error:', err);
+	process.exitCode = 1;
+});

@@ -8,7 +8,9 @@ import { chromium } from 'playwright';
 const PROJECT_ROOT = process.cwd();
 const WEB_OUTPUT_DIR = path.join(PROJECT_ROOT, 'web_output');
 const PORT = Number(process.env.WEB_OUTPUT_PORT || 5175);
-const DEFAULT_TIMEOUT_PER_MODEL_MS = Number(process.env.WEB_OUTPUT_TIMEOUT_MS || 120_000);
+const DEFAULT_TIMEOUT_PER_MODEL_MS = Number(
+  process.env.BNG_MODEL_TIMEOUT_MS || process.env.WEB_OUTPUT_TIMEOUT_MS || 60_000
+);
 const MIN_ATTEMPT_RATE = Number(process.env.WEB_OUTPUT_MIN_ATTEMPT_RATE || 0.8);
 const MIN_SUCCESS_RATE = Number(process.env.WEB_OUTPUT_MIN_SUCCESS_RATE || 0.5);
 const MODEL_TIMEOUT_OVERRIDES_MS = {

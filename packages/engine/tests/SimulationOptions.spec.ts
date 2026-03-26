@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { simulate } from '../src/index';
 import { BNGLModel, SimulationOptions } from '../src/types';
+import { resolveSimulationPhasesForRun } from '../src/services/simulation/SimulationLoop';
 
 // Mock ODESolver
 const mockIntegrate = vi.fn().mockImplementation((_times, ..._args) => {
@@ -213,5 +214,135 @@ describe('SimulationOptions', () => {
         const options: SimulationOptions = { method: 'ode', t_end: 10, n_steps: 10 };
         const result = await simulate(1, baseModel, options, mockCallbacks);
         expect(result.headers).toEqual(['time']);
+    });
+
+    it('31. should let run options override single authored phase timing', async () => {
+        baseModel.simulationPhases = [
+            { method: 'ode', t_end: 10, n_steps: 10 }
+        ];
+
+        const options: SimulationOptions = { method: 'ode', t_end: 20, n_steps: 200 };
+        const phases = resolveSimulationPhasesForRun(baseModel, options);
+        expect(phases).toHaveLength(1);
+        expect(phases[0].method).toBe('ode');
+        expect(phases[0].t_end).toBe(20);
+        expect(phases[0].n_steps).toBe(200);
+
+        const ssaOverride = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ssa',
+            t_end: 30,
+            n_steps: 300,
+        } as SimulationOptions);
+        expect(ssaOverride[0].method).toBe('ssa');
+        expect(ssaOverride[0].t_end).toBe(30);
+        expect(ssaOverride[0].n_steps).toBe(300);
+    });
+
+    it('32. should preserve authored single-phase method when options.method is default', () => {
+        baseModel.simulationPhases = [
+            { method: 'ssa', t_end: 10, n_steps: 10 }
+        ];
+
+        const phases = resolveSimulationPhasesForRun(baseModel, {
+            method: 'default',
+            t_end: 25,
+            n_steps: 250,
+        } as SimulationOptions);
+
+        expect(phases).toHaveLength(1);
+        expect(phases[0].method).toBe('ssa');
+        expect(phases[0].t_end).toBe(25);
+        expect(phases[0].n_steps).toBe(250);
+    });
+
+    it('33. should not override authored multi-phase timings from run options', () => {
+        baseModel.simulationPhases = [
+            { method: 'ode', t_end: 5, n_steps: 50 },
+            { method: 'ode', t_end: 10, n_steps: 100, continue: true }
+        ];
+
+        const phases = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ssa',
+            t_end: 999,
+            n_steps: 999,
+        } as SimulationOptions);
+
+        expect(phases).toHaveLength(2);
+        expect(phases[0].method).toBe('ode');
+        expect(phases[0].t_end).toBe(5);
+        expect(phases[0].n_steps).toBe(50);
+        expect(phases[1].method).toBe('ode');
+        expect(phases[1].t_end).toBe(10);
+        expect(phases[1].n_steps).toBe(100);
+    });
+
+    it('34. should sanitize single-phase n_steps override to integer >= 1', () => {
+        baseModel.simulationPhases = [
+            { method: 'ode', t_end: 10, n_steps: 10 }
+        ];
+
+        const fractional = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ode',
+            t_end: 20,
+            n_steps: 7.9,
+        } as SimulationOptions);
+        expect(fractional[0].n_steps).toBe(7);
+
+        const zero = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ode',
+            t_end: 20,
+            n_steps: 0,
+        } as SimulationOptions);
+        expect(zero[0].n_steps).toBe(1);
+    });
+
+    it('35. should return new phase objects without mutating input model phases', () => {
+        const originalPhase = { method: 'ode' as const, t_end: 10, n_steps: 10 };
+        baseModel.simulationPhases = [originalPhase];
+
+        const phases = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ssa',
+            t_end: 30,
+            n_steps: 300,
+        } as SimulationOptions);
+
+        expect(phases[0]).not.toBe(originalPhase);
+        expect(originalPhase.method).toBe('ode');
+        expect(originalPhase.t_end).toBe(10);
+        expect(originalPhase.n_steps).toBe(10);
+    });
+
+    it('36. should synthesize fallback phase when no authored phases are present', () => {
+        delete baseModel.simulationPhases;
+
+        const phases = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ssa',
+            t_end: 12,
+            n_steps: 24,
+        } as SimulationOptions);
+
+        expect(phases).toHaveLength(1);
+        expect(phases[0].method).toBe('ssa');
+        expect(phases[0].t_start).toBe(0);
+        expect(phases[0].t_end).toBe(12);
+        expect(phases[0].n_steps).toBe(24);
+    });
+
+    it('37. should sanitize fallback phase n_steps to integer >= 1', () => {
+        delete baseModel.simulationPhases;
+
+        const fractional = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ode',
+            t_end: 12,
+            n_steps: 9.8,
+        } as SimulationOptions);
+        expect(fractional[0].n_steps).toBe(9);
+
+        const zero = resolveSimulationPhasesForRun(baseModel, {
+            method: 'ode',
+            t_end: 12,
+            n_steps: 0,
+        } as SimulationOptions);
+        expect(zero[0].n_steps).toBe(1);
     });
 });

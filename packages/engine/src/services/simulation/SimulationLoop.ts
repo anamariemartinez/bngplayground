@@ -40,6 +40,54 @@ interface ConcreteReaction {
   ruleName?: string;
 }
 
+export function resolveSimulationPhasesForRun(model: BNGLModel, options: SimulationOptions): SimulationPhase[] {
+  const normalizeNSteps = (value: unknown): number | undefined => {
+    if (!Number.isFinite(value)) {
+      return undefined;
+    }
+    return Math.max(1, Math.floor(value as number));
+  };
+
+  const authoredPhases: SimulationPhase[] = (model.simulationPhases && model.simulationPhases.length > 0)
+    ? model.simulationPhases.map((phase) => ({ ...phase }))
+    : (model as any).phases && (model as any).phases.length > 0
+      ? (model as any).phases.map((phase: SimulationPhase) => ({ ...phase }))
+      : [];
+
+  const normalizedNSteps = normalizeNSteps(options.n_steps);
+
+  const phases: SimulationPhase[] = authoredPhases.length > 0
+    ? authoredPhases
+    : [{
+      method: options.method === 'default' ? 'ode' : options.method,
+      t_start: 0,
+      t_end: options.t_end,
+      n_steps: normalizedNSteps,
+      continue: false,
+      atol: options.atol ?? 1e-8,
+      rtol: options.rtol ?? 1e-8,
+      sparse: options.solver === 'cvode_sparse' || options.sparse
+    }];
+
+  // Interactive runs should be able to override time controls for single-phase models.
+  // Keep multi-phase authored workflows intact.
+  if (authoredPhases.length === 1) {
+    const phase = phases[0];
+    const resolvedMethod = options.method === 'default' ? phase.method : options.method;
+    if (resolvedMethod !== phase.method) {
+      phase.method = resolvedMethod;
+    }
+    if (Number.isFinite(options.t_end)) {
+      phase.t_end = options.t_end;
+    }
+    if (normalizedNSteps !== undefined) {
+      phase.n_steps = normalizedNSteps;
+    }
+  }
+
+  return phases;
+}
+
 function cloneModelForSimulation(inputModel: BNGLModel): BNGLModel {
   return {
     ...inputModel,
@@ -167,20 +215,7 @@ export async function simulate(
 
   // Pre-process actions into phases
   // 1. Prepare Phases
-  const phases: SimulationPhase[] = (model.simulationPhases && model.simulationPhases.length > 0)
-    ? model.simulationPhases
-    : (model as any).phases && (model as any).phases.length > 0
-      ? (model as any).phases
-      : [{
-        method: options.method === 'default' ? 'ode' : options.method,
-        t_start: 0,
-        t_end: options.t_end,
-        n_steps: options.n_steps,
-        continue: false,
-        atol: options.atol ?? 1e-8,
-        rtol: options.rtol ?? 1e-8,
-        sparse: options.solver === 'cvode_sparse' || options.sparse
-      }];
+  const phases: SimulationPhase[] = resolveSimulationPhasesForRun(model, options);
 
   const hasMultiPhase = phases.length > 1;
   const concentrationChanges = model.concentrationChanges || [];

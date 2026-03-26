@@ -1,11 +1,16 @@
 import { spawnSync } from 'node:child_process';
 
+const TIMEOUT_MS = Number(process.env.BNG_MODEL_TIMEOUT_MS || 60_000);
+
 const result = spawnSync(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
   ['-y', 'tsx', 'scripts/generation/generate_no_ref_gdat.ts'],
   {
     stdio: 'inherit',
-    env: process.env,
+    env: {
+      ...process.env,
+      BNG_MODEL_TIMEOUT_MS: String(TIMEOUT_MS),
+    },
     shell: false,
   },
 );
