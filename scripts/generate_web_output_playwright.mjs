@@ -15,8 +15,10 @@ const MODEL_TIMEOUT_OVERRIDES_MS = {
   lin_prion_2019: Number(process.env.WEB_OUTPUT_TIMEOUT_LIN_PRION_MS || 900_000), // 15 minutes
   jaruszewicz_blonska_2023: Number(process.env.WEB_OUTPUT_TIMEOUT_JARUSZEWICZ_BLONSKA_MS || 900_000), // 15 minutes
 };
+const defaultGuardedModels = ['lin_prion_2019', 'jaruszewicz_blonska_2023', 'lv_comp'];
+const envGuardList = (process.env.WEB_OUTPUT_SKIP_MODELS || defaultGuardedModels.join(','));
 const GUARDED_MODEL_KEYS = new Set(
-  (process.env.WEB_OUTPUT_SKIP_MODELS || 'lin_prion_2019')
+  envGuardList
     .split(',')
     .map((s) => safeModelName(s))
     .filter(Boolean)
@@ -334,7 +336,9 @@ async function main() {
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
     let activeDownloads = 0;
+    let downloadSeen = false;
     const downloadHandler = (download) => {
+      downloadSeen = true;
       activeDownloads++;
       const suggested = download.suggestedFilename();
       const targetPath = path.join(WEB_OUTPUT_DIR, suggested);
@@ -395,40 +399,42 @@ async function main() {
         );
 
         // Run single model
+        downloadSeen = false;
         const runResult = await Promise.race([
           page.evaluate((name) => window.runModels([name]), modelId),
           timeoutPromise
         ]);
+
         if (runResult && typeof runResult === 'object' && Number(runResult.failed) > 0) {
           throw new Error('MODEL_FAILED');
         }
 
-        // Wait for download to start and finish (simple heuristic: wait short time for activeDownloads to go up, then wait for 0)
-        // runModels resolves AFTER downloadCsv is called, but FileSystem IO might take a moment
-        const downloadStartWait = 2000;
+        // Wait for download to start and finish (fast models may complete before polling tick)
+        const downloadStartWait = Number(process.env.WEB_OUTPUT_DOWNLOAD_START_WAIT_MS || 300);
         const downloadWaitStart = Date.now();
         while (Date.now() - downloadWaitStart < downloadStartWait) {
-          if (activeDownloads > 0) break;
-          await new Promise(r => setTimeout(r, 100));
+          if (downloadSeen || activeDownloads > 0) break;
+          await new Promise((r) => setTimeout(r, 50));
         }
 
         // Wait for active downloads to clear
         while (activeDownloads > 0) {
-          await new Promise(r => setTimeout(r, 100));
-          if (Date.now() - downloadWaitStart > 10000) throw new Error("Download stuck");
+          await new Promise((r) => setTimeout(r, 50));
+          if (Date.now() - downloadWaitStart > 10000) throw new Error('Download stuck');
         }
 
         successCount++;
       } catch (err) {
-        console.error(`[generate:web-output] ? FAILED ${modelId}:`, err.message);
+        const errMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[generate:web-output] ? FAILED ${modelId}:`, errMessage);
         failCount++;
 
-        if (err.message === 'TIMEOUT') {
+        if (errMessage === 'TIMEOUT') {
           console.log(`[generate:web-output] ?? Timeout exceeded for ${modelId}. Writing skipped marker.`);
           // Create a marker file so the report generator knows it was skipped
           const skippedFile = path.join(WEB_OUTPUT_DIR, `results_${safeModelName(modelId)}.csv`);
           fs.writeFileSync(skippedFile, 'Time,Observable\n# SKIPPED (Timeout)\n0,0');
-        } else if (err.message === 'MODEL_FAILED') {
+        } else if (errMessage === 'MODEL_FAILED') {
           console.log(`[generate:web-output] ?? Model run failed for ${modelId}. Writing skipped marker.`);
           const skippedFile = path.join(WEB_OUTPUT_DIR, `results_${safeModelName(modelId)}.csv`);
           fs.writeFileSync(skippedFile, 'Time,Observable\n# SKIPPED (ModelFailed)\n0,0');

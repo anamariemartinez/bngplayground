@@ -92,6 +92,61 @@ class LogRingBuffer {
 
 const logBuffer = new LogRingBuffer(1000);
 
+export function mergeSimulationOptionsWithModelActionDefaults(
+  options: SimulationOptions,
+  model: BNGLModel,
+  effectiveMethod: 'ode' | 'ssa' | 'nf' | 'pla'
+): SimulationOptions {
+  const merged = { ...options };
+
+  // If the app explicitly sets t_end/n_steps (from SimulationControls), honor those values.
+  // Only fall back to model action defaults when the UI did not provide any method-level override.
+  if (model.actions && Array.isArray(model.actions)) {
+    const phases = model.simulationPhases || [];
+    if (phases.length === 0) {
+      const simAction = model.actions.slice().reverse().find((a) =>
+        a.type === `simulate_${effectiveMethod}` ||
+        (a.type === 'simulate' &&
+          (a.args?.method === effectiveMethod || (!a.args?.method && effectiveMethod === 'ode')))
+      );
+
+      if (simAction && simAction.args) {
+        const applyValueIfUnset = (existing: number | undefined, candidate: unknown): number | undefined => {
+          if (existing !== undefined && existing !== null) {
+            return existing;
+          }
+          const parsed = Number(candidate);
+          return Number.isFinite(parsed) ? parsed : existing;
+        };
+
+        if (simAction.args['t_end'] !== undefined) {
+          merged.t_end = applyValueIfUnset(merged.t_end, simAction.args['t_end']);
+        }
+        if (simAction.args['n_steps'] !== undefined) {
+          merged.n_steps = applyValueIfUnset(merged.n_steps, simAction.args['n_steps']);
+        }
+        if (simAction.args['utl'] !== undefined) {
+          merged.utl = applyValueIfUnset(merged.utl, simAction.args['utl']);
+        }
+        if (simAction.args['gml'] !== undefined) {
+          merged.gml = applyValueIfUnset(merged.gml, simAction.args['gml']);
+        }
+        if (simAction.args['equilibrate'] !== undefined) {
+          merged.equilibrate = applyValueIfUnset(merged.equilibrate, simAction.args['equilibrate']);
+        }
+        if (simAction.args['eq'] !== undefined) {
+          merged.equilibrate = applyValueIfUnset(merged.equilibrate, simAction.args['eq']);
+        }
+        if (simAction.args['seed'] !== undefined) {
+          merged.seed = applyValueIfUnset(merged.seed, simAction.args['seed']);
+        }
+      }
+    }
+  }
+
+  return merged;
+}
+
 const safeStringify = (value: unknown): string => {
   if (typeof value === 'string') return value;
   if (value instanceof Error) {
@@ -543,67 +598,8 @@ if (typeof ctx.addEventListener === 'function') {
           activeSimulationJobId = id;
           activeSimulationMethod = effectiveMethod;
 
-          // Check for model-defined simulation parameters to override defaults.
-          // IMPORTANT: only do this when explicit phase data is absent.
-          // If simulationPhases exist, per-phase settings must remain authoritative;
-          // overriding from the last action can corrupt multi-phase runs.
-          if (model.actions && phases.length === 0) {
-            // Find the relevant action for the effective method
-            // We search for `simulate_{method}` or generic `simulate` with matching method arg
-            const simAction = model.actions.slice().reverse().find(a =>
-              a.type === `simulate_${effectiveMethod}` ||
-              (a.type === 'simulate' && (a.args['method'] === effectiveMethod || (!a.args['method'] && effectiveMethod === 'ode'))) // default simulate is ode
-            );
-
-            if (simAction) {
-              if (simAction.args['t_end'] !== undefined) {
-                const tEnd = Number(simAction.args['t_end']);
-                if (!isNaN(tEnd)) {
-                  workerVerboseLog(`[Worker] Overriding t_end with model value: ${tEnd} (was ${options.t_end})`);
-                  options.t_end = tEnd;
-                }
-              }
-              if (simAction.args['n_steps'] !== undefined) {
-                const nSteps = Number(simAction.args['n_steps']);
-                if (!isNaN(nSteps)) {
-                  workerVerboseLog(
-                    `[Worker] Overriding n_steps with model value: ${nSteps} (was ${options.n_steps})`
-                  );
-                  options.n_steps = nSteps;
-                }
-              }
-              if (simAction.args['utl'] !== undefined) {
-                const utl = Number(simAction.args['utl']);
-                if (!isNaN(utl)) {
-                  workerVerboseLog(
-                    `[Worker] Overriding utl with model value: ${utl} (was ${options.utl ?? 'default'})`
-                  );
-                  options.utl = utl;
-                }
-              }
-              if (simAction.args['gml'] !== undefined) {
-                const gml = Number(simAction.args['gml']);
-                if (!isNaN(gml)) {
-                  workerVerboseLog(`[Worker] Overriding gml with model value: ${gml}`);
-                  options.gml = gml;
-                }
-              }
-              if (simAction.args['equilibrate'] !== undefined || simAction.args['eq'] !== undefined) {
-                const eq = Number(simAction.args['equilibrate'] ?? simAction.args['eq']);
-                if (!isNaN(eq)) {
-                  workerVerboseLog(`[Worker] Overriding equilibrate with model value: ${eq}`);
-                  options.equilibrate = eq;
-                }
-              }
-              if (simAction.args['seed'] !== undefined) {
-                const seed = Number(simAction.args['seed']);
-                if (!isNaN(seed)) {
-                  workerVerboseLog(`[Worker] Overriding seed with model value: ${seed}`);
-                  options.seed = seed;
-                }
-              }
-            }
-          }
+          // Merge model action defaults only when the UI did not explicitly override them.
+          options = mergeSimulationOptionsWithModelActionDefaults(options, model, effectiveMethod);
 
           const isNF = effectiveMethod === 'nf';
 
